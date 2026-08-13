@@ -3662,18 +3662,19 @@
 
         // --- RICERCA YOUTUBE TRAMITE SERVIZI PUBBLICI GRATUITI (nessuna chiave API) ---
         // Niente più YouTube Data API v3 (chiave personale, quota giornaliera limitata)
-        // né Cloudflare Worker privato di backup. Al loro posto interroghiamo istanze
-        // pubbliche di Invidious e Piped: due frontend open source per YouTube che
-        // espongono un'API di ricerca gratuita, senza autenticazione e senza quota
-        // legata a un account. Le istanze pubbliche sono gestite da terzi e a volte
-        // vanno giù o cambiano: per restare veloci e affidabili NON le proviamo una alla
-        // volta in sequenza (i tempi si sommerebbero), ma le interroghiamo tutte in
-        // parallelo e usiamo la prima che risponde con risultati validi.
-        // Invidious viene provato per primo perché supporta lato server gli stessi
-        // filtri data/durata già usati da questa app (stessi valori: hour/today/week/
-        // month/year e short/medium/long); Piped fa da ripiego, con il filtro durata
-        // applicato lato nostro sui risultati (l'endpoint di ricerca di Piped non lo
-        // supporta nativamente).
+        // né Cloudflare Worker privato di backup. Tre livelli, in ordine di affidabilità:
+        // 1) scraping diretto della pagina risultati di youtube.com tramite lo stesso
+        //    proxy CORS già usato per l'embed Spotify (vedi fetchYoutubeScrapeSearch più
+        //    sotto) — è la fonte più solida perché non dipende da un frontend di terzi;
+        // 2) istanze pubbliche Invidious, che supportano lato server gli stessi filtri
+        //    data/durata già usati da questa app (hour/today/week/month/year e
+        //    short/medium/long);
+        // 3) istanze pubbliche Piped, come ultimo ripiego, con filtro durata applicato
+        //    lato nostro (l'endpoint di ricerca di Piped non lo supporta nativamente).
+        // Le istanze Invidious/Piped sono gestite da terzi e vanno giù o cambiano spesso:
+        // per restare veloci NON le proviamo una alla volta in sequenza (i tempi si
+        // sommerebbero), ma tutte quelle di uno stesso livello in parallelo, usando la
+        // prima che risponde con risultati validi.
         const INVIDIOUS_INSTANCES = [
             'https://inv.nadeko.net',
             'https://yewtu.be',
@@ -3810,6 +3811,97 @@
             return { items, nextPageToken: data.nextpage ? JSON.stringify({ p: 'piped', instance, nextpage: data.nextpage }) : '' };
         }
 
+        // --- LIVELLO 0: scraping diretto della pagina di ricerca di YouTube ---
+        // Le istanze Invidious/Piped sono frontend di terzi che YouTube blocca sempre più
+        // spesso (a raffica, cambiano IP/CORS/protezioni senza preavviso): in pratica sono
+        // le prime a rompersi. Qui invece scarichiamo la vera pagina risultati di YouTube
+        // (youtube.com esiste sempre, per definizione) attraverso lo stesso proxy CORS
+        // gratuito già usato per l'embed di Spotify (fetchViaCorsProxy, sopra), estraendo i
+        // dati dal blob "ytInitialData" incorporato nell'HTML — la stessa tecnica usata da
+        // librerie note come yt-search. Nessuna chiave, nessuna istanza terza da tenere
+        // aggiornata: l'unico punto debole è il proxy CORS stesso, che però è già in uso
+        // altrove nell'app.
+        function parseDurationTextToSeconds(text) {
+            if (!text) return 0;
+            const parts = text.split(':').map(n => parseInt(n, 10));
+            if (parts.some(isNaN)) return 0;
+            return parts.reduce((acc, n) => acc * 60 + n, 0);
+        }
+
+        function findVideoRenderers(obj, out) {
+            out = out || [];
+            if (!obj || typeof obj !== 'object') return out;
+            if (obj.videoRenderer) out.push(obj.videoRenderer);
+            for (const k in obj) {
+                if (k === 'videoRenderer') continue;
+                const v = obj[k];
+                if (v && typeof v === 'object') findVideoRenderers(v, out);
+            }
+            return out;
+        }
+
+        // Estrae il blob JSON "ytInitialData" incorporato nell'HTML della pagina di
+        // ricerca di YouTube. Non usiamo una regex "lazy" (tipo /\{.+?\};/) per trovarne
+        // la fine: se un titolo o una descrizione contenessero per caso la sequenza "};",
+        // taglierebbe il JSON a metà. Contiamo invece le graffe una per una (ignorando
+        // quelle dentro le stringhe), così troviamo la vera graffa di chiusura.
+        function extractJsonAfterMarker(html, marker) {
+            const idx = html.indexOf(marker);
+            if (idx === -1) return null;
+            const start = html.indexOf('{', idx);
+            if (start === -1) return null;
+            let depth = 0, inStr = false, esc = false;
+            for (let i = start; i < html.length; i++) {
+                const c = html[i];
+                if (inStr) {
+                    if (esc) esc = false;
+                    else if (c === '\\') esc = true;
+                    else if (c === '"') inStr = false;
+                    continue;
+                }
+                if (c === '"') { inStr = true; continue; }
+                if (c === '{') depth++;
+                else if (c === '}') { depth--; if (depth === 0) return html.slice(start, i + 1); }
+            }
+            return null;
+        }
+
+        async function fetchYoutubeScrapeSearch(params) {
+            const html = await fetchViaCorsProxy(`https://www.youtube.com/results?search_query=${encodeURIComponent(params.q || '')}`);
+            const jsonText = extractJsonAfterMarker(html, 'var ytInitialData')
+                || extractJsonAfterMarker(html, 'ytInitialData"]')
+                || extractJsonAfterMarker(html, 'ytInitialData =');
+            if (!jsonText) throw new Error('ytInitialData non trovato nella pagina');
+            let data;
+            try { data = JSON.parse(jsonText); } catch (err) { throw new Error('ytInitialData non valido: ' + err.message); }
+
+            const renderers = findVideoRenderers(data);
+            let items = renderers
+                .filter(v => v && v.videoId && v.title)
+                .map(v => {
+                    const thumbs = (v.thumbnail && v.thumbnail.thumbnails) || [];
+                    const thumb = thumbs[thumbs.length - 1];
+                    const titleText = (v.title.runs && v.title.runs[0] && v.title.runs[0].text) || v.title.simpleText || '';
+                    const channelText = (v.ownerText && v.ownerText.runs && v.ownerText.runs[0] && v.ownerText.runs[0].text)
+                        || (v.longBylineText && v.longBylineText.runs && v.longBylineText.runs[0] && v.longBylineText.runs[0].text) || '';
+                    const durationSec = parseDurationTextToSeconds(v.lengthText && v.lengthText.simpleText);
+                    return {
+                        id: { videoId: v.videoId },
+                        snippet: {
+                            title: titleText,
+                            channelTitle: channelText,
+                            thumbnails: { high: { url: thumb ? thumb.url : `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` } }
+                        },
+                        _duration: durationSec
+                    };
+                });
+
+            items = filterByDurationLabel(items, params.videoDuration);
+            // Niente continuation token: scraping di sola prima pagina (~20 risultati),
+            // più che sufficienti per "cerca" e per la risoluzione automatica dei brani.
+            return { items, nextPageToken: '' };
+        }
+
         async function youtubeSearch(params) {
             // Pagina successiva di una ricerca già iniziata: il pageToken incapsula già
             // quale fonte/istanza ha risposto per la prima pagina, quindi replichiamo la
@@ -3822,6 +3914,14 @@
                 } catch (err) {
                     console.warn('Token di paginazione non valido, riparto dalla prima pagina:', err);
                 }
+            }
+
+            try {
+                const scrapeResult = await fetchYoutubeScrapeSearch(params);
+                if (scrapeResult && scrapeResult.items && scrapeResult.items.length > 0) return scrapeResult;
+                console.warn('Scraping YouTube riuscito ma zero risultati, provo Invidious/Piped...');
+            } catch (err) {
+                console.warn('Scraping YouTube fallito, provo Invidious/Piped:', err.message || err);
             }
 
             const invidiousResult = await raceInstances(INVIDIOUS_INSTANCES, instance => fetchInvidiousSearch(instance, params, 1));

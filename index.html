@@ -1562,7 +1562,8 @@
         async function fetchViaCorsProxy(targetUrl, timeoutMs = 10000) {
             const buildProxyUrls = [
                 u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-                u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
+                u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+                u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
             ];
 
             const attempts = buildProxyUrls.map(build => {

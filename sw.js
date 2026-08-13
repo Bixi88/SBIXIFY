@@ -153,8 +153,16 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Tutto il resto (risorse esterne generiche): passa dritto alla rete.
-  e.respondWith(fetch(req).catch(() => caches.match(req)));
+  // Tutto il resto (risorse esterne generiche): passa dritto alla rete. Se la
+  // fetch fallisce e non c'è nulla in cache, caches.match() risolve con
+  // undefined - passarlo a respondWith() è un errore (deve sempre essere un
+  // Response), e il browser lo segnala con un messaggio fuorviante che
+  // nasconde il vero problema (di solito un fallimento di rete/CORS sul sito
+  // esterno). Response.error() come ultima rete di sicurezza fa arrivare al
+  // codice della pagina un normale errore di fetch, gestibile con un .catch().
+  e.respondWith(
+    fetch(req).catch(async () => (await caches.match(req)) || Response.error())
+  );
 });
 
 // Ascolto del messaggio manuale inviato al click del pulsante per forzare il rimpiazzo

@@ -495,6 +495,25 @@
         }
         .correct-song-spacer { width: 32px; flex: 0 0 auto; }
 
+        /* Senza queste due regole .sleep-timer-sheet non ha un'altezza massima: con 8
+           risultati (thumbnail+titolo+canale ciascuno) il foglio cresce oltre lo schermo
+           e, essendo ancorato in basso (align-items:flex-end sul modal), l'eccesso finisce
+           SOPRA il bordo superiore, tagliando fuori header e primi risultati. Diamo al
+           foglio un tetto massimo e rendiamo scorrevole solo la lista risultati: header e
+           titolo restano sempre visibili in alto, tutti i risultati restano raggiungibili
+           con lo scroll. */
+        #correctSongModal .sleep-timer-sheet {
+            max-height: 78vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #correctSongResults {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            flex: 1;
+            min-height: 0;
+        }
+
         .correct-song-result {
             display: flex;
             align-items: center;
@@ -1815,6 +1834,10 @@
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
+                if (window.__perfLoadStart) {
+                    console.log('[PERF] PLAYING ricevuto — tempo totale:', Math.round(performance.now() - window.__perfLoadStart), 'ms');
+                    window.__perfLoadStart = null;
+                }
                 appState.isPlaying = true;
                 setPlayIconState(true);
                 updateDuration(); 
@@ -4775,6 +4798,14 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
+            // Diagnostica temporanea (rimuovibile): misura quanto tempo passa da qui a
+            // quando il player segnala davvero PLAYING (vedi log gemello in
+            // onPlayerStateChange). Se il grosso dell'attesa sta qui in mezzo, il ritardo è
+            // lato iframe YouTube (script + eventuale ad + buffering) e non dipende dal
+            // worker di ricerca né da codice nostro: confronta i numeri su più brani, sia
+            // mai ascoltati prima che già in cache, per vedere se cambia qualcosa.
+            window.__perfLoadStart = performance.now();
+            console.log('[PERF] loadVideoById chiamato per', track.title, '— t=0ms');
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
             updateMediaSessionMetadata(track);
 

@@ -3701,6 +3701,14 @@
                 swipeTitle.style.opacity = '1';
                 return;
             }
+            // Silenzia SUBITO, non tra 200ms: loadTrack() (chiamata sotto, dentro il
+            // setTimeout dell'animazione) fa già mute+pausa del brano uscente, ma qui lo
+            // swipe viene confermato con largo anticipo rispetto a quella chiamata - per
+            // tutta la durata dell'animazione del titolo il vecchio brano continuava a
+            // suonare tranquillamente in sottofondo, ed era quello il "pezzo di canzone
+            // precedente" che si sentiva ancora dopo il cambio.
+            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
             swipeTitle.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out';
             swipeTitle.style.transform = `translate3d(${direction === 'right' ? '100%' : '-100%'}, 0, 0)`;
             swipeTitle.style.opacity = '0';

@@ -744,6 +744,9 @@
         }
         html:not(.walkman):not(.frosted) #sheetArtworkFrame {
             border: 4px solid rgba(139, 135, 148, 0.5);
+            /* L'ombra nera pesante inline (shadow-[0_20px_50px_rgba(0,0,0,0.7)]) creava uno
+               strano alone nero intorno al vinile: rimossa, la cornice grigia basta da sola. */
+            box-shadow: none;
         }
         html:not(.walkman):not(.frosted) .track-thumb-wrap {
             background-color: rgba(139, 135, 148, 0.16);
@@ -977,6 +980,8 @@
         html.frosted #sheetArtworkFrame {
             border-radius: 50% !important;
             border: 4px solid rgba(255,255,255,0.5);
+            /* Stesso alone nero pesante segnalato in Moderna: rimosso anche qui. */
+            box-shadow: none;
         }
         html.frosted #sheetArtworkGlow { border-radius: 50% !important; }
 
@@ -1307,6 +1312,10 @@
         html.walkman .vinyl-toggle-thumb { background: var(--walkman-highlight); }
         html.frosted .vinyl-toggle-thumb { background: #1C4A63; }
         html.frosted .vinyl-opt.active { color: var(--frosted-highlight); }
+        /* La riga di testo "cantata ora" usava --accent (viola scuro #8B2FD9), che contro lo
+           sfondo blu-teal di questa skin risultava poco leggibile. Stesso indaco-violetto
+           chiaro già usato altrove in Frosted per lo stesso problema di contrasto. */
+        html.frosted .lyrics-line.active { color: var(--frosted-highlight); }
     </style>
 </head>
 <body class="flex flex-col justify-between hidden p-4 box-border h-full custom-bg-main relative">
@@ -1527,7 +1536,7 @@
 
             <!-- Area Controlli Inferiore -->
             <div class="w-full max-w-sm mx-auto shrink-0 pointer-events-auto">
-                <div class="w-full text-left mb-5">
+                <div class="w-full text-left mb-5" style="overflow-x: hidden;">
                     <div id="swipeTitleContainer" class="w-full py-1 cursor-grab active:cursor-grabbing select-none" style="touch-action: none;">
                         <div class="marquee-wrapper">
                             <div id="marqueeContent" class="marquee-content font-bold">
@@ -3216,11 +3225,16 @@
                 swipeTitle.classList.add('dragging');
                 marqueeContent.classList.remove('animate-marquee');
             };
+            // Il titolo può scorrere solo fino a questo limite: senza un tetto, un trascinamento
+            // lungo (o che non segue il dito fotogramma per fotogramma) lo spingeva oltre il
+            // bordo dello schermo, dove veniva tagliato invece di restare dentro l'area visibile.
+            const TITLE_DRAG_MAX_OFFSET = 96;
             const moveTitleDrag = (x) => {
                 if (!isDraggingTitle) return;
                 titleCurrentX = x - titleStartX;
+                const clampedX = Math.max(-TITLE_DRAG_MAX_OFFSET, Math.min(TITLE_DRAG_MAX_OFFSET, titleCurrentX));
                 const opacity = Math.max(0.2, 1 - Math.abs(titleCurrentX) / 350);
-                swipeTitle.style.transform = `translate3d(${titleCurrentX}px, 0, 0)`;
+                swipeTitle.style.transform = `translate3d(${clampedX}px, 0, 0)`;
                 swipeTitle.style.opacity = opacity;
             };
             const endTitleDrag = () => {

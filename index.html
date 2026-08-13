@@ -314,7 +314,16 @@
            ingrandita e i bordi finiscono fuori dal cerchio/contenitore, che ha
            overflow:hidden), così i bordi neri spariscono anche sulle copertine che
            li hanno. Valore regolabile da qui: più alto = più zoom/crop. */
-        :root { --artwork-zoom: 1.37; --miniplayer-artwork-zoom: 1.37; }
+        :root { --artwork-zoom: 1.37; --miniplayer-artwork-zoom: 1.37;
+            /* Zoom dedicato SOLO alla rotazione "vinile": un'immagine quadrata ingrandita
+               1.37x copre il cerchio da ferma, ma durante la rotazione, agli angoli
+               diagonali (45°/135°/225°/315°), i suoi bordi rientrano rispetto al cerchio
+               (serve almeno sqrt(2) ≈ 1.414x per restare sempre fuori dal cerchio a
+               qualunque angolo). Quel rientro lasciava intravedere per una frazione di
+               grado i bordi scuri/originali dell'immagine oltre la cornice: da qui
+               l'alone "quadrato" visibile durante la rotazione. 1.5x tiene margine. */
+            --artwork-rotate-zoom: 1.5;
+        }
         #sheetArtworkImg,
         .track-thumb-img {
             transform: scale(var(--artwork-zoom));
@@ -1188,14 +1197,29 @@
            durante la rotazione lo zoom sparirebbe e quei bordi neri ricomparirebbero
            a scatti, visibili come "spicchi" neri che ruotano insieme all'immagine. */
         @keyframes vinylSpin {
-            from { transform: scale(var(--artwork-zoom)) rotate(0deg); }
-            to { transform: scale(var(--artwork-zoom)) rotate(360deg); }
+            from { transform: scale(var(--artwork-rotate-zoom)) rotate(0deg); }
+            to { transform: scale(var(--artwork-rotate-zoom)) rotate(360deg); }
         }
         #sheetArtworkImg.vinyl-rotate {
             animation: vinylSpin 20s linear infinite;
         }
         #sheetArtworkImg.vinyl-rotate.vinyl-paused {
             animation-play-state: paused;
+        }
+        /* Rete di sicurezza: forza il clip circolare anche sulla cornice, indipendente da
+           border-radius+overflow-hidden (che su alcuni WebView Android può avere problemi
+           a "seguire" un figlio con transform, lasciando sfuggire gli angoli dell'immagine
+           oltre il bordo tondo - capitava ANCHE da fermo, non solo durante la rotazione,
+           perché l'immagine ha sempre un piccolo transform:scale attivo per il crop dei
+           bordi neri, vedi sopra ~riga 320). clip-path da solo si è rivelato insufficiente
+           sullo stesso WebView: aggiunta una maschera radiale (mask-image), tecnica diversa
+           e più affidabile per questo tipo di bug di clipping. */
+        #sheetArtworkFrame {
+            clip-path: circle(50% at 50% 50%);
+            -webkit-mask-image: radial-gradient(circle closest-side, #fff 99%, transparent 100%);
+            mask-image: radial-gradient(circle closest-side, #fff 99%, transparent 100%);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
         }
 
         /* Interruttore "Rotazione vinile" nelle Impostazioni: stessa pillola a due

@@ -1829,6 +1829,25 @@
         // valorizzato finché quello specifico video non risulta davvero in riproduzione (o
         // finché il caricamento non fallisce/viene superato da un cambio brano successivo).
         let pendingUnmuteForVideoId = null;
+        let volumeRampTimer = null;
+
+        // Vero fade in graduale del volume, al posto dello switch binario mute()/unMute()
+        // (che causava il click: unMute() passa da volume 0 a 100 in un solo istante,
+        // qualunque sia il momento in cui viene chiamato). Qui saliamo a piccoli step
+        // ravvicinati, così l'orecchio non percepisce il salto.
+        function rampVolumeTo(targetVolume, duration = 250) {
+            if (!player?.setVolume) return;
+            clearInterval(volumeRampTimer);
+            const steps = 20;
+            const stepTime = duration / steps;
+            let currentStep = 0;
+            volumeRampTimer = setInterval(() => {
+                currentStep++;
+                const v = (targetVolume * currentStep) / steps;
+                try { player.setVolume(Math.round(v)); } catch (e) {}
+                if (currentStep >= steps) clearInterval(volumeRampTimer);
+            }, stepTime);
+        }
 
         function scheduleQualityUpgrade() {
             if (!player || !player.getVideoData) return;
@@ -1908,7 +1927,8 @@
                 // che quella coda si sia davvero svuotata.
                 if (pendingUnmuteForVideoId && player?.getVideoData?.()?.video_id === pendingUnmuteForVideoId) {
                     pendingUnmuteForVideoId = null;
-                    setTimeout(() => { if (player?.unMute) { try { player.unMute(); } catch (e) {} } }, 350);
+                    const targetVolume = Number(document.getElementById('volumeSlider')?.value || 100);
+                    setTimeout(() => rampVolumeTo(targetVolume, 250), 350);
                 }
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
@@ -3707,7 +3727,8 @@
             // tutta la durata dell'animazione del titolo il vecchio brano continuava a
             // suonare tranquillamente in sottofondo, ed era quello il "pezzo di canzone
             // precedente" che si sentiva ancora dopo il cambio.
-            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            clearInterval(volumeRampTimer);
+            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
             if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
             swipeTitle.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out';
             swipeTitle.style.transform = `translate3d(${direction === 'right' ? '100%' : '-100%'}, 0, 0)`;
@@ -4775,7 +4796,8 @@
             // parecchio lavoro sincrono) in cui il player veniva effettivamente zittito:
             // in quella finestra il vecchio audio continuava tranquillamente. Mutando qui,
             // in cima, quella finestra si azzera quasi del tutto.
-            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            clearInterval(volumeRampTimer);
+            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
             // Fermiamo subito anche la decodifica del vecchio video (non solo il volume):
             // ora che tutta questa fase è comunque coperta dal mute qui sopra, possiamo
             // farlo sempre (non solo quando l'id del nuovo brano è sconosciuto) senza più
@@ -4922,7 +4944,7 @@
                     // funzione va tolto comunque (onPlayerStateChange non vedrà mai PLAYING
                     // per un id che non esiste più, quindi non lo farebbe da sé).
                     pendingUnmuteForVideoId = null;
-                    if (player?.unMute) { try { player.unMute(); } catch (e) {} }
+                    if (player?.setVolume) { try { player.setVolume(Number(document.getElementById('volumeSlider')?.value || 100)); } catch (e) {} }
                     appState.isPlaying = false;
                     setPlayIconState(false);
                     return;
@@ -4952,9 +4974,9 @@
             // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.
             clearTimeout(qualityUpgradeTimer);
             qualityUpgradedVideoId = null;
-            // Il mute è già stato applicato in cima alla funzione: qui lo confermiamo (non
-            // costa nulla se è già muto) e segniamo per quale video andrà tolto più avanti.
-            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            // Il volume a 0 è già stato applicato in cima alla funzione: qui lo confermiamo
+            // (non costa nulla se è già a 0) e segniamo per quale video partirà la rampa più avanti.
+            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
             pendingUnmuteForVideoId = track.id || null;
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
             updateMediaSessionMetadata(track);

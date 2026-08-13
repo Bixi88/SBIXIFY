@@ -1794,6 +1794,44 @@
             });
         }
 
+        // --- UPGRADE AUTOMATICO DELLA QUALITÀ DOPO L'AVVIO ---
+        // loadVideoById parte sempre con suggestedQuality:'small' per bufferizzare il
+        // minimo indispensabile e far partire l'audio il prima possibile (vedi commento
+        // in loadTrack). Una volta che il brano sta effettivamente suonando, però, non
+        // c'è più motivo di restare sulla qualità più bassa: alziamo automaticamente al
+        // massimo disponibile, ma non nell'istante esatto in cui parte (rischierebbe di
+        // causare un secondo micro-stallo proprio mentre l'utente sta ancora sentendo il
+        // primo attacco del brano) - aspettiamo qualche secondo che la riproduzione si
+        // sia stabilizzata.
+        // NB: setPlaybackQuality è "best-effort" - dai tempi dello streaming adattivo,
+        // YouTube spesso lo tratta come un suggerimento e non una scelta vincolante, ma è
+        // comunque l'unica leva che l'IFrame API espone.
+        let qualityUpgradeTimer = null;
+        let qualityUpgradedVideoId = null;
+
+        function scheduleQualityUpgrade() {
+            if (!player || !player.getVideoData) return;
+            const videoId = player.getVideoData()?.video_id;
+            if (!videoId || videoId === qualityUpgradedVideoId) return;
+            clearTimeout(qualityUpgradeTimer);
+            qualityUpgradeTimer = setTimeout(() => {
+                // Ancora lo stesso brano, ancora davvero in riproduzione: se nel
+                // frattempo l'utente ha messo in pausa o è già passato oltre, non tocchiamo
+                // nulla (una pausa che randomicamente cambia qualità sarebbe strano, e su un
+                // brano diverso l'upgrade non avrebbe più senso).
+                if (!player || !appState.isPlaying) return;
+                if (player.getVideoData?.()?.video_id !== videoId) return;
+                try {
+                    const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+                    const best = levels.find(l => l !== 'auto') || levels[0];
+                    if (best && player.setPlaybackQuality) {
+                        player.setPlaybackQuality(best);
+                    }
+                } catch (err) {}
+                qualityUpgradedVideoId = videoId;
+            }, 1800);
+        }
+
         function onPlayerReady(event) {
             player.setVolume(document.getElementById('volumeSlider')?.value || 100);
             startProgressLoop();
@@ -1835,7 +1873,9 @@
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
                 if (window.__perfLoadStart) {
-                    console.log('[PERF] PLAYING ricevuto — tempo totale:', Math.round(performance.now() - window.__perfLoadStart), 'ms');
+                    const ms = Math.round(performance.now() - window.__perfLoadStart);
+                    console.log('[PERF] PLAYING ricevuto — tempo totale:', ms, 'ms');
+                    showToast(`⏱ Avvio in ${(ms / 1000).toFixed(1)}s`);
                     window.__perfLoadStart = null;
                 }
                 appState.isPlaying = true;
@@ -1844,6 +1884,7 @@
                 updateMediaSessionState(true);
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
+                scheduleQualityUpgrade();
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
@@ -3949,6 +3990,7 @@
                 updateRefreshPlaylistBtn(url);
                 addRecentItem({ name: cachedPlaylist.name, type: 'playlist', url, artwork: cachedPlaylist.artwork });
                 addRecentPlaylist({ name: cachedPlaylist.name, url, artwork: cachedPlaylist.artwork });
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
                 return;
             }
 
@@ -4001,6 +4043,7 @@
                 // entro 30 giorni si riaprirà all'istante, senza fetch né nuova quota.
                 setCachedPlaylistTracks(url, { name: recentName, artwork: playlistArtwork, tracks: appState.tracks });
                 updateRefreshPlaylistBtn(url);
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
             } catch (err) {
                 console.warn('Import playlist Spotify fallito:', err);
                 if (resultsStatusText) {
@@ -4168,7 +4211,7 @@
         // "Flower Chanel." come artista - fa sì che YouTube privilegi contenuti su quel
         // marchio (sfilate, pubblicità) invece della canzone vera. Aggiungerla è la
         // differenza tra i due casi.
-        async function resolveYoutubeIdForTrack(track, index, updateRowUI = true) {
+        async function resolveYoutubeIdForTrack(track, index, updateRowUI = true, silent = false) {
             const query = buildTrackSearchQuery(track);
 
             // Applica un id YouTube (video già trovato, in cache o via nuova ricerca) al
@@ -4272,12 +4315,55 @@
                 return true;
             } catch (err) {
                 console.warn('Risoluzione YouTube fallita per', track.title, err);
-                showToast(`Impossibile trovare "${track.title}" su YouTube.`);
+                if (!silent) showToast(`Impossibile trovare "${track.title}" su YouTube.`);
                 return false;
             }
         }
 
-        // --- CORREGGI CANZONE: pressione prolungata su una riga della lista canzoni, mostra
+        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        // --- PRE-CARICAMENTO IN BACKGROUND DI UNA PLAYLIST INTERA ---
+        // Una playlist Spotify importata arriva con i brani "vuoti" (nessun id YouTube):
+        // finora venivano risolti uno alla volta, solo quando l'utente ci arrivava per
+        // ascoltarli, con l'attesa della ricerca ogni volta. Ora, appena una playlist è
+        // aperta, partiamo in sottofondo a risolverli TUTTI, cache permettendo, così
+        // quando l'utente sfoglia avanti sono già pronti.
+        //
+        // Regole per non rallentare l'ascolto in corso:
+        // - backgroundResolveToken: incrementato ad ogni nuova playlist aperta. Il loop
+        //   controlla il proprio token ad ogni giro e si ferma da solo se nel frattempo
+        //   l'utente ha aperto un'altra playlist/lista: non lascia loop "fantasma" a
+        //   consumare rete per una lista che non si vede più.
+        // - Una pausa di partenza e una pausa tra un brano e l'altro: il loop non è mai
+        //   la richiesta più urgente in corsia, lascia sempre spazio a quello che
+        //   l'utente sta facendo attivamente (ricerca, tap su un brano).
+        // - resolveYoutubeIdForTrack in modalità silent: niente toast di errore per
+        //   brani che l'utente non ha nemmeno toccato.
+        // - Ogni brano già in cache (getCachedTrack, controllato dentro
+        //   resolveYoutubeIdForTrack stesso) costa solo una lettura locale, non una
+        //   richiesta di rete: con playlist riascoltate spesso il grosso del lavoro è
+        //   già gratis.
+        let backgroundResolveToken = 0;
+
+        async function startBackgroundPlaylistResolve(tracks, listKey) {
+            const token = ++backgroundResolveToken;
+            await sleep(1500);
+            for (let i = 0; i < tracks.length; i++) {
+                if (token !== backgroundResolveToken) return;
+                if (currentLoadedKey !== listKey) return;
+                const track = tracks[i];
+                if (track.id) continue;
+                // In ascolto proprio adesso: lo risolverebbe già loadTrack in tempo reale,
+                // qui rifaremmo la stessa richiesta inutilmente in parallelo.
+                if (nowPlayingTracks === tracks && nowPlayingIndex === i) continue;
+                try {
+                    await resolveYoutubeIdForTrack(track, i, tracks === appState.tracks, true);
+                } catch (err) { /* un brano non trovato non deve fermare gli altri */ }
+                if (token !== backgroundResolveToken) return;
+                await sleep(700);
+            }
+        }
+
         // fino a 5 alternative YouTube per lo stesso brano (stessa query di
         // resolveYoutubeIdForTrack, stesso filtro videoDuration:'medium') e permette di
         // sostituire il video sbagliato con un tap, in tempo reale. ---
@@ -4806,6 +4892,11 @@
             // mai ascoltati prima che già in cache, per vedere se cambia qualcosa.
             window.__perfLoadStart = performance.now();
             console.log('[PERF] loadVideoById chiamato per', track.title, '— t=0ms');
+            // Reset dello stato di upgrade qualità (vedi scheduleQualityUpgrade): il
+            // brano precedente potrebbe aver già alzato la propria qualità o avere un
+            // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.
+            clearTimeout(qualityUpgradeTimer);
+            qualityUpgradedVideoId = null;
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
             updateMediaSessionMetadata(track);
 

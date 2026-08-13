@@ -755,7 +755,9 @@
         .empty-home p { font-size:13.5px; color:var(--text-muted); margin:0; line-height:1.5; }
 
         /* ================= RISULTATI: righe con divisore (niente più pillole piene) ================= */
-        .track-row { position:relative; }
+        .track-row { position:relative; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+        .track-row * { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; -webkit-user-drag:none; user-drag:none; }
+        .track-row img { touch-action:manipulation; }
         .track-row .text-sm { font-size:15px; }
         .track-row .text-xs { font-size:12.5px; }
         .track-row::after { content:''; position:absolute; left:64px; right:0; bottom:0; height:1px; background:rgba(243,239,230,0.08); }
@@ -1711,8 +1713,11 @@
 
         // Delega globale: fa vibrare al click/tap di qualunque pulsante o elemento cliccabile,
         // senza dover aggiungere una chiamata manuale ad ogni singolo handler esistente.
+        // .track-row ESCLUSA di proposito: ha la sua pressione prolungata (4s, vedi
+        // renderTrackList) con vibrazione dedicata al momento giusto - lasciandola qui
+        // vibrerebbe una seconda volta al rilascio dopo ogni pressione prolungata.
         document.addEventListener('click', (e) => {
-            if (e.target.closest('button, [role="button"], .track-row, .qcard, .settings-playlist-row, .settings-playlist-remove, .correct-song-result')) {
+            if (e.target.closest('button, [role="button"], .qcard, .settings-playlist-row, .settings-playlist-remove, .correct-song-result')) {
                 hapticFeedback();
             }
         }, true);
@@ -4622,6 +4627,10 @@
                     pressTimer = setTimeout(() => {
                         longPressFired = true;
                         pressTimer = null;
+                        // Vibrazione volutamente qui, non delegata al click generico: deve
+                        // sentirsi esattamente ai 4 secondi (conferma che la pressione
+                        // prolungata è stata riconosciuta), non prima.
+                        hapticFeedback();
                         openCorrectSongModal(track, index, appState.tracks);
                     }, LONG_PRESS_MS);
                 };
@@ -4636,8 +4645,10 @@
 
                 trackRow.addEventListener('click', () => {
                     // Il click che segue naturalmente il rilascio dopo la pressione prolungata
-                    // non deve anche avviare la riproduzione del brano.
+                    // non deve anche avviare la riproduzione del brano (la vibrazione per
+                    // quel caso è già scattata a parte, dentro il timer dei 4s qui sopra).
                     if (longPressFired) { longPressFired = false; return; }
+                    hapticFeedback();
                     loadTrack(index);
                 });
                 trackListDiv.appendChild(trackRow);

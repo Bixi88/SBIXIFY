@@ -1820,6 +1820,11 @@
         let qualityUpgradeTimer = null;
         let qualityUpgradedVideoId = null;
 
+        // videoId per cui è stato appena chiesto un mute "anti-tick" in loadTrack(): resta
+        // valorizzato finché quello specifico video non risulta davvero in riproduzione (o
+        // finché il caricamento non fallisce/viene superato da un cambio brano successivo).
+        let pendingUnmuteForVideoId = null;
+
         function scheduleQualityUpgrade() {
             if (!player || !player.getVideoData) return;
             const videoId = player.getVideoData()?.video_id;
@@ -1890,6 +1895,13 @@
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
                 scheduleQualityUpgrade();
+                // Se questo è il video per cui loadTrack() aveva silenziato il player in
+                // attesa dello swap, ora sta davvero suonando: togliamo il mute con un
+                // piccolissimo margine, così il "tick" iniziale resta nascosto.
+                if (pendingUnmuteForVideoId && player?.getVideoData?.()?.video_id === pendingUnmuteForVideoId) {
+                    pendingUnmuteForVideoId = null;
+                    setTimeout(() => { if (player?.unMute) { try { player.unMute(); } catch (e) {} } }, 120);
+                }
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
@@ -4868,6 +4880,13 @@
                     // non si sceglie un altro brano.
                     nowPlayingUnavailable = true;
                     if (player?.stopVideo) { try { player.stopVideo(); } catch (e) {} }
+                    // Nessun video partirà per questo brano: se avevamo silenziato in attesa
+                    // dello swap, il mute non verrebbe mai tolto (onPlayerStateChange non
+                    // vedrà mai PLAYING per un id che non esiste più).
+                    if (pendingUnmuteForVideoId) {
+                        pendingUnmuteForVideoId = null;
+                        if (player?.unMute) { try { player.unMute(); } catch (e) {} }
+                    }
                     appState.isPlaying = false;
                     setPlayIconState(false);
                     return;
@@ -4897,6 +4916,14 @@
             // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.
             clearTimeout(qualityUpgradeTimer);
             qualityUpgradedVideoId = null;
+            // Silenziamo il player un istante prima dello swap: loadVideoById sostituisce
+            // il flusso audio dell'iframe "al volo" e questo produce quasi sempre un breve
+            // "tick" udibile proprio nell'istante dell'attacco del nuovo brano. Il mute
+            // nasconde quel pop; viene tolto da onPlayerStateChange non appena il NUOVO
+            // video (stesso videoId) risulta realmente in stato PLAYING, con un piccolo
+            // margine per lasciare che il pop (silenzioso) sia già passato.
+            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            pendingUnmuteForVideoId = track.id || null;
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
             updateMediaSessionMetadata(track);
 

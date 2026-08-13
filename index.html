@@ -1196,99 +1196,98 @@
         /* Interruttore "Rotazione vinile" nelle Impostazioni: stessa pillola a due
            stati del selettore Tema, riutilizzando le stesse classi/variabili così i due
            controlli restano visivamente coerenti. */
-        /* ================= Testi sincronizzati (swipe-up sul vinile) =================
-           Pannello che copre header+artwork della now playing sheet, aperto con uno
-           swipe verso l'alto sul vinile (o tap sull'hint), chiuso con swipe verso il
-           basso o tap sulla freccia. La riga "cantata ora" è evidenziata con
-           --accent (si adatta automaticamente al tema attivo, niente verde fisso alla
-           Spotify), le altre restano attenuate. Lo scroll automatico centra sempre la
-           riga attiva. */
+        /* ================= Testi sincronizzati (swipe orizzontale sul vinile) =================
+           Sostituisce SOLO la fascia dell'artwork (da sotto l'header a sopra
+           titolo/controlli), non l'intera sheet. Swipe verso sinistra sul vinile: il
+           disco scorre via a sinistra e sparisce, il testo entra al suo posto da destra.
+           Swipe verso destra sul testo: animazione inversa, torna il vinile. La riga
+           "cantata ora" è evidenziata con --accent (si adatta automaticamente al tema
+           attivo), le altre restano attenuate; lo scroll automatico la mantiene centrata. */
+        #artworkBand {
+            position: relative;
+            overflow: hidden;
+            touch-action: pan-y;
+        }
+        #vinylSlide {
+            transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease;
+        }
+        #artworkBand.dragging #vinylSlide,
+        #artworkBand.dragging #lyricsPanel {
+            transition: none;
+        }
+        #artworkBand.lyrics-shown #vinylSlide {
+            transform: translate3d(-115%, 0, 0);
+            opacity: 0;
+            pointer-events: none;
+        }
         #lyricsPanel {
             position: absolute;
             inset: 0;
-            bottom: 0;
-            z-index: 30;
             display: flex;
             flex-direction: column;
-            background: var(--bg-gradient);
-            opacity: 0;
-            transform: translate3d(0, 24px, 0);
+            transform: translate3d(115%, 0, 0);
+            transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
             pointer-events: none;
-            transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        #lyricsPanel.open {
-            opacity: 1;
+        #artworkBand.lyrics-shown #lyricsPanel {
             transform: translate3d(0, 0, 0);
             pointer-events: auto;
         }
-        #lyricsPanel.dragging { transition: none; }
-        #lyricsPanelHeader {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px 8px;
-            flex-shrink: 0;
-        }
-        #lyricsCloseBtn {
-            color: var(--text-muted);
-            padding: 8px;
-            font-size: 17px;
-        }
-        #lyricsCloseBtn:active { transform: scale(0.9); }
         #lyricsScroll {
             flex: 1;
             overflow-y: auto;
-            padding: 12px 26px 40vh;
+            padding: 4px 6px;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
         }
         #lyricsScroll::-webkit-scrollbar { display: none; }
         .lyrics-line {
-            font-size: 21px;
-            line-height: 1.5;
+            font-size: 16px;
+            line-height: 1.45;
             font-weight: 800;
             color: var(--text-muted);
-            opacity: 0.55;
-            padding: 9px 0;
-            transform-origin: left center;
+            opacity: 0.5;
+            padding: 6px 0;
+            text-align: center;
             transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
         }
         .lyrics-line.active {
             color: var(--accent);
             opacity: 1;
-            transform: scale(1.035);
+            transform: scale(1.06);
         }
-        .lyrics-line.past { opacity: 0.32; }
+        .lyrics-line.past { opacity: 0.28; }
         .lyrics-state {
             flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 10px;
             color: var(--text-muted);
             text-align: center;
-            padding: 0 40px;
-            font-size: 14px;
+            padding: 0 30px;
+            font-size: 13px;
         }
-        .lyrics-state i { font-size: 26px; opacity: 0.6; }
-        /* Piccola freccetta che pulsa sopra il vinile, unico hint visivo per lo swipe-up
-           (nessun testo/etichetta che affollerebbe la schermata di riproduzione). */
+        .lyrics-state i { font-size: 22px; opacity: 0.6; }
+        /* Freccetta discreta sul bordo destro del vinile: unico hint visivo per lo
+           swipe orizzontale. Sparisce quando il testo è mostrato. */
         #lyricsHint {
             position: absolute;
-            left: 50%;
-            bottom: -6px;
-            transform: translateX(-50%);
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
             color: var(--text-muted);
-            font-size: 13px;
-            opacity: 0.55;
-            animation: lyricsHintBounce 2.2s ease-in-out infinite;
+            font-size: 15px;
+            opacity: 0.4;
+            animation: lyricsHintNudge 2.4s ease-in-out infinite;
             pointer-events: none;
         }
-        #lyricsHint.hidden-hint { display: none; }
-        @keyframes lyricsHintBounce {
-            0%, 100% { transform: translate(-50%, 0); opacity: 0.55; }
-            50% { transform: translate(-50%, -5px); opacity: 0.9; }
+        #artworkBand.lyrics-shown #lyricsHint { display: none; }
+        @keyframes lyricsHintNudge {
+            0%, 100% { transform: translate(0, -50%); opacity: 0.4; }
+            50% { transform: translate(-6px, -50%); opacity: 0.75; }
         }
 
         .vinyl-toggle-row { margin-top:18px; }
@@ -1481,20 +1480,6 @@
 
         <div id="sheetSwipeCloseArea" class="absolute inset-x-0 top-0 z-10 cursor-grab active:cursor-grabbing" style="touch-action: none; bottom: 310px;"></div>
 
-        <!-- Pannello testi sincronizzati: nascosto di default (classe .open lo mostra),
-             copre header+artwork. Aperto con swipe-up sul vinile, chiuso con swipe-down
-             o tap sulla freccia. -->
-        <div id="lyricsPanel">
-            <div id="lyricsPanelHeader">
-                <button id="lyricsCloseBtn" title="Chiudi testi">
-                    <i class="fa-solid fa-chevron-down"></i>
-                </button>
-                <span class="text-[11px] font-bold uppercase tracking-[0.14em]" style="color:var(--text-muted);">Testo</span>
-                <span style="width:33px;"></span>
-            </div>
-            <div id="lyricsScroll"></div>
-        </div>
-
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
             <div id="sheetHeaderDrag" class="w-full flex flex-col items-center py-2 shrink-0 cursor-pointer pointer-events-auto">
                 <div class="flex items-center justify-between w-full px-1">
@@ -1511,9 +1496,12 @@
                 </div>
             </div>
 
-            <!-- Artwork Rotondo -->
-            <div class="flex-1 flex items-center justify-center my-auto relative">
-                <div class="relative w-72 h-72 md:w-80 md:h-80 flex items-center justify-center">
+            <!-- Artwork Rotondo + Testi sincronizzati: "fascia" tra header e titolo. Swipe
+                 verso sinistra sul vinile fa scorrere via il disco e comparire il testo al
+                 suo posto (solo in questa fascia, non nell'header/controlli); swipe verso
+                 destra sul testo torna al vinile. -->
+            <div id="artworkBand" class="flex-1 flex items-center justify-center my-auto relative pointer-events-auto">
+                <div id="vinylSlide" class="relative w-72 h-72 md:w-80 md:h-80 flex items-center justify-center">
                     <div id="sheetArtworkGlow" class="absolute inset-0 rounded-full blur-2xl opacity-0 transition-opacity duration-500 bg-[var(--accent)]"></div>
                     <!-- Nessun placeholder/squircle: l'immagine è invisibile (opacity-0) finché
                          non è caricata con successo, poi appare direttamente con la sua ombra e
@@ -1527,7 +1515,13 @@
                     <div id="sheetArtworkFrame" class="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.7)] opacity-0 transition-opacity duration-300">
                         <img id="sheetArtworkImg" class="w-full h-full object-cover" alt="">
                     </div>
-                    <i class="fa-solid fa-chevron-up" id="lyricsHint"></i>
+                    <i class="fa-solid fa-chevron-left" id="lyricsHint"></i>
+                </div>
+
+                <!-- Pannello testi: riempie la stessa fascia, entra da destra quando il
+                     vinile scorre via a sinistra (vedi CSS #artworkBand.lyrics-shown). -->
+                <div id="lyricsPanel">
+                    <div id="lyricsScroll"></div>
                 </div>
             </div>
 
@@ -2804,7 +2798,7 @@
         function openLyricsPanel() {
             if (lyricsLines.length === 0 && document.getElementById('lyricsScroll').children.length === 0) return;
             lyricsOpen = true;
-            document.getElementById('lyricsPanel').classList.add('open');
+            document.getElementById('artworkBand').classList.add('lyrics-shown');
             hapticFeedback();
             // Riallinea subito la riga attiva sulla posizione corrente del brano, invece di
             // aspettare il prossimo tick del loop di progresso.
@@ -2816,81 +2810,97 @@
 
         function closeLyricsPanel() {
             lyricsOpen = false;
-            document.getElementById('lyricsPanel').classList.remove('open');
+            document.getElementById('artworkBand')?.classList.remove('lyrics-shown');
         }
 
+        // Swipe ORIZZONTALE sulla fascia artwork (#artworkBand): verso sinistra col vinile
+        // in vista apre i testi (il disco scorre via a sinistra, il testo entra da destra);
+        // verso destra col testo in vista torna al vinile. Durante il trascinamento i due
+        // livelli seguono live il dito (via CSS var --drag), poi scattano in posizione
+        // aperta/chiusa al rilascio in base alla soglia. touch-action:pan-y sulla fascia
+        // lascia comunque funzionare lo scroll verticale del testo quando è già mostrato.
         function setupLyricsPanel() {
+            const band = document.getElementById('artworkBand');
+            const vinyl = document.getElementById('vinylSlide');
             const panel = document.getElementById('lyricsPanel');
-            const closeBtn = document.getElementById('lyricsCloseBtn');
-            const header = document.getElementById('lyricsPanelHeader');
             const scrollEl = document.getElementById('lyricsScroll');
 
-            closeBtn.addEventListener('click', closeLyricsPanel);
+            let startX = 0, startY = 0, dragX = 0, isDragging = false, gestureDecided = false, isHorizontal = false;
+            const width = () => band.offsetWidth || 300;
 
-            // --- Apertura: swipe verso l'alto sul vinile ---
-            // sheetSwipeCloseArea copre già header+artwork e gestisce lo swipe verso il
-            // basso per chiudere la sheet; qui aggiungiamo in parallelo il riconoscimento
-            // dello swipe in direzione OPPOSTA (verso l'alto) sulla stessa area, senza
-            // toccare quella logica (che ignora già i movimenti con delta negativo).
-            let openStartY = 0, openTracking = false;
-            const onOpenStart = (y) => { openStartY = y; openTracking = true; };
-            const onOpenEnd = (y) => {
-                if (!openTracking) return;
-                openTracking = false;
-                if (openStartY - y > 70) openLyricsPanel();
+            const applyDrag = (dx) => {
+                const shown = band.classList.contains('lyrics-shown');
+                // Base: 0 se vinile in vista, -width se testo in vista (punto di partenza
+                // della traccia), poi sommiamo lo spostamento del dito.
+                const base = shown ? -width() : 0;
+                let pos = base + dx;
+                pos = Math.max(-width(), Math.min(0, pos));
+                band.classList.add('dragging');
+                vinyl.style.transform = `translate3d(${pos}px, 0, 0)`;
+                vinyl.style.opacity = String(1 + pos / width());
+                panel.style.transform = `translate3d(${pos + width()}px, 0, 0)`;
             };
-            sheetSwipeCloseArea.addEventListener('touchstart', (e) => onOpenStart(e.touches[0].clientY), { passive: true });
-            sheetSwipeCloseArea.addEventListener('touchend', (e) => onOpenEnd(e.changedTouches[0].clientY), { passive: true });
-            sheetSwipeCloseArea.addEventListener('mousedown', (e) => onOpenStart(e.clientY));
-            window.addEventListener('mouseup', (e) => { if (openTracking) onOpenEnd(e.clientY); });
+
+            const resetInlineStyles = () => {
+                band.classList.remove('dragging');
+                vinyl.style.transform = '';
+                vinyl.style.opacity = '';
+                panel.style.transform = '';
+            };
+
+            const onStart = (x, y) => {
+                startX = x; startY = y; dragX = 0;
+                isDragging = true; gestureDecided = false; isHorizontal = false;
+            };
+            const onMove = (x, y, evt) => {
+                if (!isDragging) return;
+                const dx = x - startX, dy = y - startY;
+                if (!gestureDecided) {
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    gestureDecided = true;
+                    isHorizontal = Math.abs(dx) > Math.abs(dy);
+                    // Se il testo è già mostrato ed è uno scroll verticale, o se non
+                    // siamo in cima e si va comunque in orizzontale, lasciamo fare al
+                    // browser (scroll naturale della lista testi).
+                    if (!isHorizontal) { isDragging = false; return; }
+                }
+                if (!isHorizontal) return;
+                // In vista vinile si può solo swipare a sinistra (dx<0) per aprire; in
+                // vista testo si può solo swipare a destra (dx>0) per chiudere - evita di
+                // "strappare" oltre i due soli stati possibili.
+                const shown = band.classList.contains('lyrics-shown');
+                if ((!shown && dx > 0) || (shown && dx < 0)) return;
+                if (evt && evt.cancelable) evt.preventDefault();
+                dragX = dx;
+                applyDrag(dx);
+            };
+            const onEnd = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                if (!gestureDecided || !isHorizontal) { resetInlineStyles(); return; }
+                const shown = band.classList.contains('lyrics-shown');
+                const threshold = width() * 0.28;
+                resetInlineStyles();
+                if (!shown && dragX < -threshold) openLyricsPanel();
+                else if (shown && dragX > threshold) closeLyricsPanel();
+                dragX = 0;
+            };
+
+            band.addEventListener('touchstart', (e) => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+            band.addEventListener('touchmove', (e) => onMove(e.touches[0].clientX, e.touches[0].clientY, e), { passive: false });
+            band.addEventListener('touchend', onEnd, { passive: true });
+            band.addEventListener('touchcancel', onEnd, { passive: true });
+
+            band.addEventListener('mousedown', (e) => { if (e.target.closest('button')) return; onStart(e.clientX, e.clientY); });
+            window.addEventListener('mousemove', (e) => { if (isDragging) onMove(e.clientX, e.clientY); });
+            window.addEventListener('mouseup', onEnd);
+
             // Tap diretto sull'hint (freccetta) apre subito, per chi non fa swipe.
             document.getElementById('lyricsHint').addEventListener('click', openLyricsPanel);
-
-            // --- Chiusura: swipe verso il basso sull'header del pannello, o quando si è
-            // già in cima alla lista (scrollTop 0) e si continua a tirare giù ---
-            let closeStartY = 0, closeCurrentY = 0, isClosingDrag = false;
-            const onCloseStart = (y) => {
-                closeStartY = y;
-                isClosingDrag = true;
-                panel.classList.add('dragging');
-            };
-            const onCloseMove = (y) => {
-                if (!isClosingDrag) return;
-                closeCurrentY = y - closeStartY;
-                if (closeCurrentY > 0) {
-                    panel.style.transform = `translate3d(0, ${closeCurrentY}px, 0)`;
-                    panel.style.opacity = String(Math.max(0.3, 1 - closeCurrentY / 400));
-                }
-            };
-            const onCloseEnd = () => {
-                if (!isClosingDrag) return;
-                isClosingDrag = false;
-                panel.classList.remove('dragging');
-                panel.style.transform = '';
-                panel.style.opacity = '';
-                if (closeCurrentY > 90) closeLyricsPanel();
-                closeCurrentY = 0;
-            };
-            header.addEventListener('touchstart', (e) => onCloseStart(e.touches[0].clientY), { passive: true });
-            header.addEventListener('touchmove', (e) => onCloseMove(e.touches[0].clientY), { passive: true });
-            header.addEventListener('touchend', onCloseEnd, { passive: true });
-
-            let scrollTouchStartY = 0, scrollDragging = false;
-            scrollEl.addEventListener('touchstart', (e) => {
-                scrollTouchStartY = e.touches[0].clientY;
-                scrollDragging = scrollEl.scrollTop <= 0;
-            }, { passive: true });
-            scrollEl.addEventListener('touchmove', (e) => {
-                if (!scrollDragging) return;
-                const delta = e.touches[0].clientY - scrollTouchStartY;
-                if (delta > 0 && scrollEl.scrollTop <= 0) {
-                    if (!isClosingDrag) onCloseStart(scrollTouchStartY);
-                    onCloseMove(e.touches[0].clientY);
-                } else {
-                    scrollDragging = false;
-                }
-            }, { passive: true });
-            scrollEl.addEventListener('touchend', () => { if (isClosingDrag) onCloseEnd(); scrollDragging = false; }, { passive: true });
+            void scrollEl; // riferimento tenuto per chiarezza, lo scroll verticale della
+                            // lista è nativo (touch-action: pan-y su #artworkBand) e non
+                            // richiede gestori dedicati: onMove sopra si disattiva da solo
+                            // (isDragging = false) non appena riconosce un gesto verticale.
         }
 
         function setupFilterDropdowns() {

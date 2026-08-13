@@ -1231,10 +1231,16 @@
            disco scorre via a sinistra e sparisce, il testo entra al suo posto da destra.
            Swipe verso destra sul testo: animazione inversa, torna il vinile. La riga
            "cantata ora" è evidenziata con --accent (si adatta automaticamente al tema
-           attivo), le altre restano attenuate; lo scroll automatico la mantiene centrata. */
+           attivo), le altre restano attenuate; lo scroll automatico la mantiene centrata.
+           NB: niente overflow:hidden qui sopra (band NON lo ha) - il ritaglio necessario
+           a nascondere vinile/testo quando sono fuori vista arriva già dal contenitore
+           #nowPlayingSheet (schermo intero, overflow:hidden). Prima invece il ritaglio
+           extra su questa fascia (più stretta del foglio) tagliava in modo asimmetrico
+           anche l'alone sfocato del vinile (#sheetArtworkGlow), creando lo strano "alone
+           quadrato" visibile pure a vinile fermo: rimosso qui, il glow resta libero di
+           sfumare senza bordi netti. */
         #artworkBand {
             position: relative;
-            overflow: hidden;
             touch-action: pan-y;
         }
         #vinylSlide {
@@ -2935,6 +2941,7 @@
                             // richiede gestori dedicati: onMove sopra si disattiva da solo
                             // (isDragging = false) non appena riconosce un gesto verticale.
         }
+
 
         function setupFilterDropdowns() {
             const dateTrigger = document.getElementById('filterDateTrigger');

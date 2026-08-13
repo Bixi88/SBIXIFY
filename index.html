@@ -1563,6 +1563,16 @@
             tracks: [],
             currentIndex: -1,
             isPlaying: false,
+            // Distinto da isPlaying: isPlaying riflette lo stato ISTANTANEO del player
+            // YouTube (diventa false anche durante il breve pauseVideo() di transizione
+            // in loadTrack, o mentre un nuovo brano è ancora in buffering). intendedPlaying
+            // riflette invece la VOLONTÀ dell'utente ("dovrebbe star suonando qualcosa") e
+            // resta true per tutta la transizione tra un brano e il successivo. Il watchdog
+            // anti-stop e il recupero su visibilitychange si basano su questo, altrimenti
+            // proprio nel momento più delicato (cambio brano in background, dove il nuovo
+            // video può bloccarsi in buffering) si autodisabiliterebbero pensando che
+            // l'utente abbia messo in pausa volontariamente.
+            intendedPlaying: false,
             // Filtri della ricerca manuale (barra in alto): parte sempre da "qualsiasi",
             // sarà l'utente a cambiarli di volta in volta dal pannello filtri.
             filterDate: 'any',
@@ -1935,14 +1945,27 @@
                 setPlayIconState(false);
                 updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                syncKeepAlive(false);
+                // NON fermare il keep-alive se questo PAUSED è solo il fermo interno che
+                // loadTrack() fa in cima a se stessa ad ogni cambio brano (appState.intendedPlaying
+                // resta true in quel caso, l'utente vuole ancora ascoltare). Su Android Auto,
+                // spegnere anche solo per un istante l'audio "udibile" proprio nel momento in cui
+                // deve partire il nuovo video fa sì che Chrome tratti la scheda come in background
+                // e blocchi l'autoplay del loadVideoById() successivo: il player resta caricato ma
+                // fermo, col widget Android Auto bloccato sull'icona play (il sintomo segnalato:
+                // la canzone "si blocca" ad ogni cambio). Il keep-alive va fermato solo su una
+                // pausa vera, decisa dall'utente.
+                if (!appState.intendedPlaying) syncKeepAlive(false);
             } else if (event.data == YT.PlayerState.ENDED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
                 updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                syncKeepAlive(false);
+                // handleTrackEnded() PRIMA di decidere sul keep-alive: se fa partire il brano
+                // successivo, appState.intendedPlaying resta true e non va toccato, per lo stesso
+                // motivo del ramo PAUSED qui sopra. Solo se la coda è davvero finita (e viene
+                // impostato intendedPlaying = false al suo interno) fermiamo il keep-alive.
                 handleTrackEnded();
+                if (!appState.intendedPlaying) syncKeepAlive(false);
             }
             // BUFFERING (3), UNSTARTED (-1), CUED (5): nessuna modifica all'icona.
         }
@@ -4789,6 +4812,14 @@
         async function loadTrack(index, sourceTracks = appState.tracks) {
             if (index < 0 || index >= sourceTracks.length) return;
 
+            // Ogni chiamata a loadTrack() (tap su un brano, avanti/indietro, autoadvance a
+            // fine canzone) è sempre una richiesta di riproduzione: lo segnaliamo SUBITO,
+            // prima ancora del pauseVideo() qui sotto che azzererà temporaneamente
+            // appState.isPlaying. Così il watchdog resta attivo durante tutta la
+            // transizione e può recuperare un eventuale stallo nel caricamento del nuovo
+            // video (tipico con schermo spento su Android Auto).
+            appState.intendedPlaying = true;
+
             // Silenziamo il player SUBITO, come prima cosa in assoluto: prima ancora di
             // toccare qualunque DOM/stato. Il tick/bleed-through del brano precedente non
             // veniva dal solo swap di loadVideoById() più avanti, ma anche dal tempo che
@@ -4939,6 +4970,7 @@
                     // precedente): lo fermiamo del tutto e blocchiamo il tasto play finché
                     // non si sceglie un altro brano.
                     nowPlayingUnavailable = true;
+                    appState.intendedPlaying = false;
                     if (player?.stopVideo) { try { player.stopVideo(); } catch (e) {} }
                     // Nessun video partirà per questo brano: il mute applicato in cima alla
                     // funzione va tolto comunque (onPlayerStateChange non vedrà mai PLAYING
@@ -5081,7 +5113,13 @@
             // ripartire il player, altrimenti riprenderebbe l'ultimo video ancora
             // caricato nell'iframe, cioè il brano precedente.
             if (nowPlayingUnavailable) return;
-            if (appState.isPlaying) player.pauseVideo(); else player.playVideo();
+            if (appState.isPlaying) {
+                appState.intendedPlaying = false;
+                player.pauseVideo();
+            } else {
+                appState.intendedPlaying = true;
+                player.playVideo();
+            }
         }
 
         function nextTrack() {
@@ -5164,6 +5202,11 @@
         function setSleepTimer(minutes) {
             if (sleepTimerHandle) clearTimeout(sleepTimerHandle);
             sleepTimerHandle = setTimeout(() => {
+                // Va segnalato come pausa "voluta" PRIMA di pauseVideo(), altrimenti col
+                // nuovo controllo su intendedPlaying in onPlayerStateChange (vedi PAUSED)
+                // il keep-alive resterebbe attivo pensando che sia solo una pausa di
+                // transizione tra un brano e l'altro.
+                appState.intendedPlaying = false;
                 if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
                 sleepTimerHandle = null;
                 updateSleepTimerButtonUI();
@@ -5200,7 +5243,11 @@
                 loadTrack(0, nowPlayingTracks);
             }
             // Repeat spento: non si fa nulla, la riproduzione resta ferma sull'ultimo brano
-            // (icona già impostata su "play" da onPlayerStateChange).
+            // (icona già impostata su "play" da onPlayerStateChange). Qui la riproduzione
+            // si ferma davvero e volontariamente (fine coda, non un blocco da recuperare):
+            // disattiviamo intendedPlaying, altrimenti il watchdog crederebbe ancora che
+            // l'utente voglia sentire qualcosa.
+            appState.intendedPlaying = false;
         }
 
         // Watchdog anti-stop in background: quando la app va in background (schermo
@@ -5211,21 +5258,53 @@
         // Questo watchdog controlla ogni 3 secondi: se dovremmo star suonando
         // (appState.isPlaying true) ma l'audio keep-alive o il player YouTube
         // risultano fermi, li fa ripartire senza intervento dell'utente.
+        // Da quanti cicli consecutivi (3s l'uno) il player risulta fermo in BUFFERING (3)
+        // sullo stesso video: se supera la soglia, non è un semplice buffering lento ma
+        // uno stallo vero e proprio (tipico quando la rete/i timer vengono limitati con
+        // schermo spento su Android Auto) e va forzato un nuovo tentativo di caricamento.
+        let stuckBufferingTicks = 0;
+        let stuckBufferingVideoId = null;
+
         function startBackgroundWatchdog() {
             setInterval(() => {
-                if (!appState.isPlaying) return;
+                // Usiamo intendedPlaying (volontà dell'utente) e non isPlaying (stato
+                // istantaneo del player): isPlaying va a false anche solo per il breve
+                // pauseVideo() di transizione tra un brano e l'altro, o mentre il nuovo
+                // video è ancora in buffering - è esattamente in quei momenti che il
+                // watchdog deve restare attivo per poter intervenire.
+                if (!appState.intendedPlaying) { stuckBufferingTicks = 0; return; }
                 const ka = document.getElementById('keepAliveAudio');
                 if (ka && ka.paused) {
                     ka.play().catch(() => {});
                 }
                 if (player && player.getPlayerState && typeof player.getPlayerState === 'function') {
                     const state = player.getPlayerState();
+                    const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
                     // 2 = PAUSED, -1 = UNSTARTED: se il browser ha messo in pausa il
                     // player da solo mentre l'utente si aspettava ancora la riproduzione,
                     // lo rimettiamo in play.
                     if (state === 2 || state === -1) {
+                        stuckBufferingTicks = 0;
                         try { player.playVideo(); } catch (err) {}
+                        return;
                     }
+                    // 3 = BUFFERING: normale per qualche secondo, ma se persiste sullo
+                    // stesso video per troppi cicli il caricamento è bloccato (non basta
+                    // playVideo(), va ricaricato il video da capo).
+                    if (state === 3 && activeVideoId) {
+                        if (activeVideoId === stuckBufferingVideoId) {
+                            stuckBufferingTicks++;
+                        } else {
+                            stuckBufferingVideoId = activeVideoId;
+                            stuckBufferingTicks = 1;
+                        }
+                        if (stuckBufferingTicks >= 4) { // ~12 secondi bloccato sullo stesso video
+                            stuckBufferingTicks = 0;
+                            try { player.loadVideoById({ videoId: activeVideoId, suggestedQuality: 'small' }); } catch (err) {}
+                        }
+                        return;
+                    }
+                    stuckBufferingTicks = 0;
                 }
             }, 3000);
         }
@@ -5235,7 +5314,7 @@
         // giro del watchdog: dà una sensazione di ripresa istantanea.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState !== 'visible') return;
-            if (!appState.isPlaying) return;
+            if (!appState.intendedPlaying) return;
             const ka = document.getElementById('keepAliveAudio');
             if (ka && ka.paused) ka.play().catch(() => {});
             if (player && player.getPlayerState) {
@@ -5244,7 +5323,7 @@
                     try { player.playVideo(); } catch (err) {}
                 }
             }
-            updateMediaSessionState(true);
+            updateMediaSessionState(appState.isPlaying);
             updateMediaSessionPosition();
         });
 

@@ -51,6 +51,7 @@
             top: 0; left: 0; right: 0; bottom: 0;
             width: 100%; height: 100%;
             overflow: hidden;
+            overscroll-behavior: none;
             background: var(--bg-gradient);
             color: var(--text-main);
         }
@@ -203,6 +204,7 @@
             will-change: transform;
             background: var(--bg-gradient);
             overflow: hidden;
+            overscroll-behavior: none;
         }
         #nowPlayingSheet.expanded {
             transform: translateY(-100%);
@@ -942,8 +944,8 @@
            satinato, accento viola acceso, artwork tutte rotonde.
            ================================================================ */
         html.frosted {
-            --bg-main: #4A5875;
-            --bg-gradient-top: #4F84A0;
+            --bg-main: #505C79;
+            --bg-gradient-top: #607A9E;
             /* CORREZIONE: la prima versione usava i colori del wallpaper ESTERNO alla
                foto (quello dietro le tre card del mockup) — un blu-navy scuro e saturo.
                Ma l'app, quando è aperta, riempie tutto lo schermo: corrisponde quindi
@@ -961,9 +963,8 @@
                di dichiarazione, il primo è il più in superficie) così scurisce senza
                spegnere l'alone teal/indaco sotto. */
             --bg-gradient:
-                radial-gradient(70% 55% at 50% 46%, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 72%),
-                radial-gradient(95% 75% at 66% 40%, #4F84A0 0%, rgba(79,90,123,0) 78%),
-                linear-gradient(165deg, #4F5A7B 0%, #4A5875 100%);
+                radial-gradient(100% 90% at 68% 32%, var(--bg-gradient-top) 0%, rgba(0,0,0,0) 85%),
+                linear-gradient(var(--bg-main), var(--bg-main));
             --bg-card: rgba(150, 172, 196, 0.20);
             --bg-input: rgba(150, 172, 196, 0.14);
             --accent: #8B2FD9;
@@ -997,12 +998,24 @@
         html.frosted #sheetArtworkFrame {
             border-radius: 50% !important;
             border: 4px solid rgba(255,255,255,0.5);
-            /* L'alone nero morbido sotto il vinile (box-shadow di base, ereditato
-               dalla classe Tailwind sull'elemento) era stato tolto qui per errore
-               insieme a quello di Moderna: in Frosted invece ci sta bene e va
-               ripristinato, semplicemente non sovrascrivendolo più. */
+            /* Ombra scura e ampia sotto il vinile, come nella foto di riferimento: più
+               marcata in basso che ai lati, quindi due livelli (uno stretto, uno largo)
+               invece del solo shadow di base ereditato da Tailwind. */
+            box-shadow: 0 14px 30px rgba(4,6,14,0.5), 0 38px 80px rgba(4,6,14,0.55) !important;
         }
-        html.frosted #sheetArtworkGlow { border-radius: 50% !important; }
+        /* Alone scuro dietro il vinile (NON colorato in accento): nella foto di
+           riferimento è un vero e proprio scurimento — tutti i canali RGB scendono
+           rispetto allo sfondo — non una tinta viola. Leggermente più esteso verso il
+           basso che verso l'alto, coerente con l'ombra su #sheetArtworkFrame sopra.
+           Ingrandito oltre i bordi del vinile (inset negativo) e senza blur-filter:
+           la sfumatura è già incorporata nel radial-gradient stesso. */
+        html.frosted #sheetArtworkGlow {
+            border-radius: 50% !important;
+            inset: -35%;
+            background: radial-gradient(60% 62% at 50% 58%, rgba(8,10,20,0.55) 0%, rgba(8,10,20,0.30) 45%, rgba(8,10,20,0) 78%) !important;
+            filter: none !important;
+        }
+        html.frosted #sheetArtworkGlow.opacity-20 { opacity: 1 !important; }
         /* Etichetta "Riproduzione da Playlist: <nome>" nell'header della Now Playing
            sheet: bianco piatto si perde troppo poco, meglio in tinta con l'accento
            chiaro del tema (stesso viola usato per l'highlight dei testi). */
@@ -1256,6 +1269,7 @@
         #artworkBand {
             position: relative;
             touch-action: pan-y;
+            overscroll-behavior: none;
         }
         #vinylSlide {
             transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease;
@@ -2881,7 +2895,7 @@
             };
             const onMove = (x, y, evt) => {
                 if (!isDragging) return;
-                if (forwardingClose) { sheetCloseMove(y); return; }
+                if (forwardingClose) { if (evt && evt.cancelable) evt.preventDefault(); sheetCloseMove(y); return; }
                 const dx = x - startX, dy = y - startY;
                 if (!gestureDecided) {
                     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
@@ -2889,6 +2903,7 @@
                     isHorizontal = Math.abs(dx) > Math.abs(dy);
                     if (!isHorizontal) {
                         if (dy > 0 && !band.classList.contains('lyrics-shown')) {
+                            if (evt && evt.cancelable) evt.preventDefault();
                             forwardingClose = true;
                             sheetCloseStart(startY);
                             sheetCloseMove(y);

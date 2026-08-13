@@ -1778,6 +1778,7 @@
         function onPlayerReady(event) {
             player.setVolume(document.getElementById('volumeSlider')?.value || 100);
             startProgressLoop();
+            startBackgroundWatchdog();
             setupMediaSessionHandlers();
             const ka = document.getElementById('keepAliveAudio');
             if (ka) ka.volume = 0.01; // percettibile solo dal browser, non dall'orecchio
@@ -4998,6 +4999,51 @@
             // Repeat spento: non si fa nulla, la riproduzione resta ferma sull'ultimo brano
             // (icona già impostata su "play" da onPlayerStateChange).
         }
+
+        // Watchdog anti-stop in background: quando la app va in background (schermo
+        // spento, app minimizzata, tab non visibile) Chrome/Android e Safari/iOS a
+        // volte mettono comunque in pausa l'audio "keep-alive" nonostante il loop,
+        // oppure sospendono per un istante l'iframe YouTube per throttling. Appena
+        // questo succede il player smette di suonare e non riparte da solo.
+        // Questo watchdog controlla ogni 3 secondi: se dovremmo star suonando
+        // (appState.isPlaying true) ma l'audio keep-alive o il player YouTube
+        // risultano fermi, li fa ripartire senza intervento dell'utente.
+        function startBackgroundWatchdog() {
+            setInterval(() => {
+                if (!appState.isPlaying) return;
+                const ka = document.getElementById('keepAliveAudio');
+                if (ka && ka.paused) {
+                    ka.play().catch(() => {});
+                }
+                if (player && player.getPlayerState && typeof player.getPlayerState === 'function') {
+                    const state = player.getPlayerState();
+                    // 2 = PAUSED, -1 = UNSTARTED: se il browser ha messo in pausa il
+                    // player da solo mentre l'utente si aspettava ancora la riproduzione,
+                    // lo rimettiamo in play.
+                    if (state === 2 || state === -1) {
+                        try { player.playVideo(); } catch (err) {}
+                    }
+                }
+            }, 3000);
+        }
+
+        // Quando la pagina torna visibile (utente rientra nell'app dopo averla lasciata
+        // in background) verifichiamo subito lo stato reale, senza aspettare il primo
+        // giro del watchdog: dà una sensazione di ripresa istantanea.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!appState.isPlaying) return;
+            const ka = document.getElementById('keepAliveAudio');
+            if (ka && ka.paused) ka.play().catch(() => {});
+            if (player && player.getPlayerState) {
+                const state = player.getPlayerState();
+                if (state === 2 || state === -1) {
+                    try { player.playVideo(); } catch (err) {}
+                }
+            }
+            updateMediaSessionState(true);
+            updateMediaSessionPosition();
+        });
 
         function startProgressLoop() {
             setInterval(() => {

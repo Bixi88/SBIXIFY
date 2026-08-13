@@ -989,10 +989,16 @@
         html.frosted #sheetArtworkFrame {
             border-radius: 50% !important;
             border: 4px solid rgba(255,255,255,0.5);
-            /* Stesso alone nero pesante segnalato in Moderna: rimosso anche qui. */
-            box-shadow: none;
+            /* L'alone nero morbido sotto il vinile (box-shadow di base, ereditato
+               dalla classe Tailwind sull'elemento) era stato tolto qui per errore
+               insieme a quello di Moderna: in Frosted invece ci sta bene e va
+               ripristinato, semplicemente non sovrascrivendolo più. */
         }
         html.frosted #sheetArtworkGlow { border-radius: 50% !important; }
+        /* Etichetta "Riproduzione da Playlist: <nome>" nell'header della Now Playing
+           sheet: bianco piatto si perde troppo poco, meglio in tinta con l'accento
+           chiaro del tema (stesso viola usato per l'highlight dei testi). */
+        html.frosted #sheetHeaderPlaylistName { color: var(--frosted-highlight); }
 
         /* ---- Artwork mini nella lista canzoni: il bordo va sul CONTENITORE (.track-thumb-wrap),
            non sull'<img> al suo interno. Prima il bordo era sull'immagine mentre il contenitore
@@ -1283,14 +1289,20 @@
             font-weight: 800;
             color: var(--text-muted);
             opacity: 0.5;
-            padding: 6px 0;
+            /* Padding laterale: lascia margine per l'ingrandimento della riga attiva
+               (transform: scale) qui sotto, altrimenti le righe già larghe quasi
+               quanto il contenitore vengono tagliate ai bordi quando si ingrandiscono
+               (lo scale non fa ricalcolare il wrapping, allarga solo visivamente). */
+            padding: 6px 14px;
             text-align: center;
+            overflow-wrap: break-word;
+            word-break: break-word;
             transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
         }
         .lyrics-line.active {
             color: var(--accent);
             opacity: 1;
-            transform: scale(1.06);
+            transform: scale(1.04);
         }
         .lyrics-line.past { opacity: 0.28; }
         .lyrics-state {
@@ -1306,24 +1318,6 @@
             font-size: 13px;
         }
         .lyrics-state i { font-size: 22px; opacity: 0.6; }
-        /* Freccetta discreta sul bordo destro del vinile: unico hint visivo per lo
-           swipe orizzontale. Sparisce quando il testo è mostrato. */
-        #lyricsHint {
-            position: absolute;
-            right: 4px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-muted);
-            font-size: 15px;
-            opacity: 0.4;
-            animation: lyricsHintNudge 2.4s ease-in-out infinite;
-            pointer-events: none;
-        }
-        #artworkBand.lyrics-shown #lyricsHint { display: none; }
-        @keyframes lyricsHintNudge {
-            0%, 100% { transform: translate(0, -50%); opacity: 0.4; }
-            50% { transform: translate(-6px, -50%); opacity: 0.75; }
-        }
 
         .vinyl-toggle-row { margin-top:18px; }
         .vinyl-toggle { position:relative; display:flex; gap:6px; background:var(--bg-input); padding:4px; border-radius:14px; }
@@ -1554,7 +1548,6 @@
                     <div id="sheetArtworkFrame" class="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.7)] opacity-0 transition-opacity duration-300">
                         <img id="sheetArtworkImg" class="w-full h-full object-cover" alt="">
                     </div>
-                    <i class="fa-solid fa-chevron-left" id="lyricsHint"></i>
                 </div>
 
                 <!-- Pannello testi: riempie la stessa fascia, entra da destra quando il
@@ -2934,8 +2927,6 @@
             window.addEventListener('mousemove', (e) => { if (isDragging) onMove(e.clientX, e.clientY); });
             window.addEventListener('mouseup', onEnd);
 
-            // Tap diretto sull'hint (freccetta) apre subito, per chi non fa swipe.
-            document.getElementById('lyricsHint').addEventListener('click', openLyricsPanel);
             void scrollEl; // riferimento tenuto per chiarezza, lo scroll verticale della
                             // lista è nativo (touch-action: pan-y su #artworkBand) e non
                             // richiede gestori dedicati: onMove sopra si disattiva da solo
@@ -5342,9 +5333,9 @@
             if (titleEl) titleEl.innerText = track.title;
             if (channelEl) channelEl.innerText = track.channel;
 
-            // Nuovo brano: il pannello testi torna sempre alla copertina (se era aperto)
-            // e parte subito la ricerca del testo sincronizzato per quello nuovo.
-            closeLyricsPanel();
+            // Nuovo brano: resta sulla vista in cui l'utente si trova (vinile o testo),
+            // non si torna più forzatamente alla copertina. Parte comunque subito la
+            // ricerca del testo sincronizzato per il nuovo brano.
             loadLyricsForCurrentTrack(track);
 
             const sheetImg = document.getElementById('sheetArtworkImg');

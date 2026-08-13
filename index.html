@@ -2365,8 +2365,15 @@
                 } catch (e) {}
             }
             if (vinylToggleEl) {
-                let savedVinyl = false;
-                try { savedVinyl = localStorage.getItem('sbixify_vinyl_rotation') === '1'; } catch (e) {}
+                // Per chi installa l'app per la prima volta (nessuna preferenza salvata
+                // ancora in localStorage) la rotazione vinile parte attiva di default;
+                // chi invece l'ha già impostata in passato (On o Off) mantiene la propria
+                // scelta invariata.
+                let savedVinyl = true;
+                try {
+                    const storedVinyl = localStorage.getItem('sbixify_vinyl_rotation');
+                    if (storedVinyl !== null) savedVinyl = storedVinyl === '1';
+                } catch (e) {}
                 setVinylRotation(savedVinyl);
                 vinylOptEls.forEach(opt => {
                     opt.addEventListener('click', () => setVinylRotation(opt.dataset.vinyl === 'on'));
@@ -4602,10 +4609,12 @@
                         <p class="text-xs truncate mt-1 custom-text-muted font-medium">${escapeHtml(track.channel)}</p>
                     </div>
                 `;
-                // Pressione prolungata: apre "Correggi canzone" per questo brano (stesso
-                // identico pattern pointerdown/pointerup con guardia longPressFired già usato
-                // per il tasto cancella sulle card dei Recenti in home).
-                const LONG_PRESS_MS = 500;
+                // Pressione prolungata: apre "Correggi canzone" per questo brano. Tenuta
+                // volutamente lunga (4s, non 500ms) per evitare aperture accidentali del
+                // modale di ricerca mentre si scorre/tocca la lista - qui, a differenza
+                // del tasto cancella dei Recenti in home, un'apertura per sbaglio è più
+                // fastidiosa perché porta a un'altra schermata.
+                const LONG_PRESS_MS = 4000;
                 let pressTimer = null;
                 let longPressFired = false;
                 const startPress = () => {

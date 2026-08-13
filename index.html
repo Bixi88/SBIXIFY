@@ -1872,12 +1872,6 @@
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
-                if (window.__perfLoadStart) {
-                    const ms = Math.round(performance.now() - window.__perfLoadStart);
-                    console.log('[PERF] PLAYING ricevuto — tempo totale:', ms, 'ms');
-                    showToast(`⏱ Avvio in ${(ms / 1000).toFixed(1)}s`);
-                    window.__perfLoadStart = null;
-                }
                 appState.isPlaying = true;
                 setPlayIconState(true);
                 updateDuration(); 
@@ -4884,14 +4878,6 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
-            // Diagnostica temporanea (rimuovibile): misura quanto tempo passa da qui a
-            // quando il player segnala davvero PLAYING (vedi log gemello in
-            // onPlayerStateChange). Se il grosso dell'attesa sta qui in mezzo, il ritardo è
-            // lato iframe YouTube (script + eventuale ad + buffering) e non dipende dal
-            // worker di ricerca né da codice nostro: confronta i numeri su più brani, sia
-            // mai ascoltati prima che già in cache, per vedere se cambia qualcosa.
-            window.__perfLoadStart = performance.now();
-            console.log('[PERF] loadVideoById chiamato per', track.title, '— t=0ms');
             // Reset dello stato di upgrade qualità (vedi scheduleQualityUpgrade): il
             // brano precedente potrebbe aver già alzato la propria qualità o avere un
             // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.

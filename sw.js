@@ -28,12 +28,10 @@ const ASSETS = [
 const NEVER_CACHE_HOSTS = [
   'googleapis.com',
   'youtube.com',
-  // Sostituti gratuiti di ricerca YouTube (Invidious/Piped, istanze pubbliche varie):
-  // stessa logica di prima, mai in cache così i risultati di ricerca restano freschi.
-  'invidious',
-  'piped',
-  'yewtu.be',
-  'nadeko.net'
+  // Il nostro Worker Cloudflare di ricerca: mai in cache così i risultati
+  // di ricerca restano sempre freschi (workers.dev copre qualunque nome
+  // di Worker distribuito sul piano gratuito).
+  'workers.dev'
 ];
 
 self.addEventListener('install', (e) => {

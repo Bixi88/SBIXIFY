@@ -1518,7 +1518,7 @@
                     <label class="block text-xs font-bold uppercase tracking-wider custom-text-muted">Servizio di ricerca</label>
                     <span id="modalApiBadgeError" class="hidden text-[10px] font-bold text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">Non disponibile</span>
                 </div>
-                <p class="text-[10px] custom-text-muted leading-snug">L'app cerca i brani su YouTube tramite più servizi pubblici gratuiti (Invidious e Piped), senza bisogno di alcuna chiave API. Se un server non risponde, ne viene provato subito un altro in automatico.</p>
+                <p class="text-[10px] custom-text-muted leading-snug">L'app cerca i brani su YouTube tramite un piccolo server dedicato (Cloudflare Workers, piano gratuito), senza bisogno di alcuna chiave API.</p>
             </div>
 
             <div class="mt-6 border-t border-white/5 pt-4">
@@ -3661,281 +3661,44 @@
             }
         }
 
-        // --- RICERCA YOUTUBE TRAMITE SERVIZI PUBBLICI GRATUITI (nessuna chiave API) ---
-        // Niente più YouTube Data API v3 (chiave personale, quota giornaliera limitata)
-        // né Cloudflare Worker privato di backup. Tre livelli, in ordine di affidabilità:
-        // 1) scraping diretto della pagina risultati di youtube.com tramite lo stesso
-        //    proxy CORS già usato per l'embed Spotify (vedi fetchYoutubeScrapeSearch più
-        //    sotto) — è la fonte più solida perché non dipende da un frontend di terzi;
-        // 2) istanze pubbliche Invidious, che supportano lato server gli stessi filtri
-        //    data/durata già usati da questa app (hour/today/week/month/year e
-        //    short/medium/long);
-        // 3) istanze pubbliche Piped, come ultimo ripiego, con filtro durata applicato
-        //    lato nostro (l'endpoint di ricerca di Piped non lo supporta nativamente).
-        // Le istanze Invidious/Piped sono gestite da terzi e vanno giù o cambiano spesso:
-        // per restare veloci NON le proviamo una alla volta in sequenza (i tempi si
-        // sommerebbero), ma tutte quelle di uno stesso livello in parallelo, usando la
-        // prima che risponde con risultati validi.
-        const INVIDIOUS_INSTANCES = [
-            'https://yewtu.be',
-            'https://invidious.jing.rocks',
-            'https://invidious.privacyredirect.com',
-            'https://yt.drgnz.club',
-            // inv.nadeko.net esclusa: ha un sistema anti-bot (CAPTCHA) davanti che
-            // blocca proprio le richieste automatiche come le nostre.
-        ];
-        const PIPED_INSTANCES = [
-            'https://pipedapi.kavin.rocks',
-            'https://pipedapi-libre.kavin.rocks',
-            'https://pipedapi.adminforge.de',
-            'https://api.piped.yt',
-            'https://pipedapi.drgns.space',
-            'https://pipedapi.owo.si',
-            'https://piped-api.privacy.com.de',
-            'https://pipedapi.reallyaweso.me',
-        ];
-        const SEARCH_RACE_TIMEOUT_MS = 6000;
-
-        function fetchWithTimeout(url, timeoutMs = SEARCH_RACE_TIMEOUT_MS) {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs);
-            return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
-        }
-
-        // Interroga tutte le istanze passate IN PARALLELO tramite fetchOne (una Promise
-        // per istanza) e restituisce il primo risultato con almeno un elemento. Se
-        // nessuna trova risultati ma almeno una ha risposto correttamente (anche vuota),
-        // quella risposta vuota viene tenuta da parte e restituita come ripiego finale
-        // invece di far sembrare che la fonte intera sia irraggiungibile.
-        function raceInstances(instances, fetchOne) {
-            return new Promise((resolve) => {
-                if (instances.length === 0) { resolve(null); return; }
-                let settled = false;
-                let pending = instances.length;
-                let fallbackEmpty = null;
-                const finish = (result) => { if (!settled) { settled = true; clearTimeout(timer); resolve(result); } };
-                const timer = setTimeout(() => finish(fallbackEmpty), SEARCH_RACE_TIMEOUT_MS + 500);
-
-                instances.forEach(instance => {
-                    fetchOne(instance).then(result => {
-                        pending--;
-                        if (result && result.items && result.items.length > 0) { finish(result); return; }
-                        if (result && !fallbackEmpty) fallbackEmpty = result;
-                        if (pending === 0) finish(fallbackEmpty);
-                    }).catch(err => {
-                        pending--;
-                        console.warn(`Istanza ${instance} non disponibile:`, err.message || err);
-                        if (pending === 0) finish(fallbackEmpty);
-                    });
-                });
-            });
-        }
-
-        // Converte i risultati Invidious nello stesso formato usato in tutta l'app
-        // (quello della vecchia YouTube Data API v3): items[].id.videoId,
-        // items[].snippet.title/channelTitle/thumbnails.high.url.
-        function normalizeInvidiousItems(list) {
-            return (list || [])
-                .filter(v => v && v.type === 'video' && v.videoId)
-                .map(v => {
-                    const thumbs = v.videoThumbnails || [];
-                    const thumb = thumbs.find(t => t.quality === 'high') || thumbs.find(t => t.quality === 'medium') || thumbs[0];
-                    return {
-                        id: { videoId: v.videoId },
-                        snippet: {
-                            title: v.title || '',
-                            channelTitle: v.author || '',
-                            thumbnails: { high: { url: thumb ? thumb.url : `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` } }
-                        }
-                    };
-                });
-        }
-
-        async function fetchInvidiousSearch(instance, params, page) {
-            let url = `${instance}/api/v1/search?q=${encodeURIComponent(params.q || '')}&type=video`;
-            if (params.videoDuration) url += `&duration=${params.videoDuration}`;
-            if (params.filterDate && params.filterDate !== 'any') url += `&date=${params.filterDate}`;
-            if (page && page > 1) url += `&page=${page}`;
-            const res = await fetchWithTimeout(url);
-            if (!res.ok) throw new Error('Invidious HTTP ' + res.status);
-            const data = await res.json();
-            if (!Array.isArray(data)) throw new Error('risposta non valida');
-            const items = normalizeInvidiousItems(data);
-            return { items, nextPageToken: items.length > 0 ? JSON.stringify({ p: 'inv', instance, page: (page || 1) + 1 }) : '' };
-        }
-
-        // Converte i risultati Piped: url è nel formato "/watch?v=ID", da cui estraiamo
-        // il videoId; teniamo temporaneamente anche la durata per poterla filtrare qui
-        // sotto (Piped non supporta il filtro durata come parametro di ricerca).
-        function normalizePipedItems(list) {
-            return (list || [])
-                .filter(v => v && v.type === 'stream' && v.url)
-                .map(v => {
-                    const m = /[?&]v=([a-zA-Z0-9_-]{11})/.exec(v.url || '');
-                    if (!m) return null;
-                    const videoId = m[1];
-                    return {
-                        id: { videoId },
-                        snippet: {
-                            title: v.title || '',
-                            channelTitle: v.uploaderName || '',
-                            thumbnails: { high: { url: v.thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` } }
-                        },
-                        _duration: v.duration || 0
-                    };
-                })
-                .filter(Boolean);
-        }
-
-        function filterByDurationLabel(items, label) {
-            if (!label || label === 'any') return items;
-            return items.filter(it => {
-                const d = it._duration || 0;
-                if (label === 'short') return d > 0 && d < 240;
-                if (label === 'medium') return d >= 240 && d <= 1200;
-                if (label === 'long') return d > 1200;
-                return true;
-            });
-        }
-
-        async function fetchPipedSearch(instance, params, nextpageToken) {
-            const url = nextpageToken
-                ? `${instance}/nextpage/search?q=${encodeURIComponent(params.q || '')}&filter=music_songs&nextpage=${encodeURIComponent(nextpageToken)}`
-                : `${instance}/search?q=${encodeURIComponent(params.q || '')}&filter=music_songs`;
-            const res = await fetchWithTimeout(url);
-            if (!res.ok) throw new Error('Piped HTTP ' + res.status);
-            const data = await res.json();
-            if (!data || !Array.isArray(data.items)) throw new Error('risposta non valida');
-            const items = filterByDurationLabel(normalizePipedItems(data.items), params.videoDuration);
-            return { items, nextPageToken: data.nextpage ? JSON.stringify({ p: 'piped', instance, nextpage: data.nextpage }) : '' };
-        }
-
-        // --- LIVELLO 0: scraping diretto della pagina di ricerca di YouTube ---
-        // Le istanze Invidious/Piped sono frontend di terzi che YouTube blocca sempre più
-        // spesso (a raffica, cambiano IP/CORS/protezioni senza preavviso): in pratica sono
-        // le prime a rompersi. Qui invece scarichiamo la vera pagina risultati di YouTube
-        // (youtube.com esiste sempre, per definizione) attraverso lo stesso proxy CORS
-        // gratuito già usato per l'embed di Spotify (fetchViaCorsProxy, sopra), estraendo i
-        // dati dal blob "ytInitialData" incorporato nell'HTML — la stessa tecnica usata da
-        // librerie note come yt-search. Nessuna chiave, nessuna istanza terza da tenere
-        // aggiornata: l'unico punto debole è il proxy CORS stesso, che però è già in uso
-        // altrove nell'app.
-        function parseDurationTextToSeconds(text) {
-            if (!text) return 0;
-            const parts = text.split(':').map(n => parseInt(n, 10));
-            if (parts.some(isNaN)) return 0;
-            return parts.reduce((acc, n) => acc * 60 + n, 0);
-        }
-
-        function findVideoRenderers(obj, out) {
-            out = out || [];
-            if (!obj || typeof obj !== 'object') return out;
-            if (obj.videoRenderer) out.push(obj.videoRenderer);
-            for (const k in obj) {
-                if (k === 'videoRenderer') continue;
-                const v = obj[k];
-                if (v && typeof v === 'object') findVideoRenderers(v, out);
-            }
-            return out;
-        }
-
-        // Estrae il blob JSON "ytInitialData" incorporato nell'HTML della pagina di
-        // ricerca di YouTube. Non usiamo una regex "lazy" (tipo /\{.+?\};/) per trovarne
-        // la fine: se un titolo o una descrizione contenessero per caso la sequenza "};",
-        // taglierebbe il JSON a metà. Contiamo invece le graffe una per una (ignorando
-        // quelle dentro le stringhe), così troviamo la vera graffa di chiusura.
-        function extractJsonAfterMarker(html, marker) {
-            const idx = html.indexOf(marker);
-            if (idx === -1) return null;
-            const start = html.indexOf('{', idx);
-            if (start === -1) return null;
-            let depth = 0, inStr = false, esc = false;
-            for (let i = start; i < html.length; i++) {
-                const c = html[i];
-                if (inStr) {
-                    if (esc) esc = false;
-                    else if (c === '\\') esc = true;
-                    else if (c === '"') inStr = false;
-                    continue;
-                }
-                if (c === '"') { inStr = true; continue; }
-                if (c === '{') depth++;
-                else if (c === '}') { depth--; if (depth === 0) return html.slice(start, i + 1); }
-            }
-            return null;
-        }
-
-        async function fetchYoutubeScrapeSearch(params) {
-            const html = await fetchViaCorsProxy(`https://www.youtube.com/results?search_query=${encodeURIComponent(params.q || '')}`);
-            const jsonText = extractJsonAfterMarker(html, 'var ytInitialData')
-                || extractJsonAfterMarker(html, 'ytInitialData"]')
-                || extractJsonAfterMarker(html, 'ytInitialData =');
-            if (!jsonText) throw new Error('ytInitialData non trovato nella pagina');
-            let data;
-            try { data = JSON.parse(jsonText); } catch (err) { throw new Error('ytInitialData non valido: ' + err.message); }
-
-            const renderers = findVideoRenderers(data);
-            let items = renderers
-                .filter(v => v && v.videoId && v.title)
-                .map(v => {
-                    const thumbs = (v.thumbnail && v.thumbnail.thumbnails) || [];
-                    const thumb = thumbs[thumbs.length - 1];
-                    const titleText = (v.title.runs && v.title.runs[0] && v.title.runs[0].text) || v.title.simpleText || '';
-                    const channelText = (v.ownerText && v.ownerText.runs && v.ownerText.runs[0] && v.ownerText.runs[0].text)
-                        || (v.longBylineText && v.longBylineText.runs && v.longBylineText.runs[0] && v.longBylineText.runs[0].text) || '';
-                    const durationSec = parseDurationTextToSeconds(v.lengthText && v.lengthText.simpleText);
-                    return {
-                        id: { videoId: v.videoId },
-                        snippet: {
-                            title: titleText,
-                            channelTitle: channelText,
-                            thumbnails: { high: { url: thumb ? thumb.url : `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` } }
-                        },
-                        _duration: durationSec
-                    };
-                });
-
-            items = filterByDurationLabel(items, params.videoDuration);
-            // Niente continuation token: scraping di sola prima pagina (~20 risultati),
-            // più che sufficienti per "cerca" e per la risoluzione automatica dei brani.
-            return { items, nextPageToken: '' };
-        }
+        // --- RICERCA YOUTUBE TRAMITE IL NOSTRO WORKER CLOUDFLARE ---
+        // Storia breve: prima chiave YouTube Data API v3 personale + Worker Cloudflare
+        // privato di backup; poi tentativo con istanze pubbliche Invidious/Piped e
+        // scraping via proxy CORS gratuiti (allorigins/corsproxy/codetabs). Nessuna delle
+        // due strade gratuite di terzi si è rivelata affidabile in pratica: le istanze
+        // Invidious/Piped in gran parte non abilitano CORS per origini esterne (richieste
+        // che arrivano regolarmente a destinazione, anche con status 200, ma senza
+        // l'header Access-Control-Allow-Origin, quindi il browser le scarta), e i proxy
+        // CORS gratuiti hanno limiti di dimensione risposta troppo stretti per la pagina
+        // di ricerca di YouTube (visto un 413 Payload Too Large da corsproxy.io).
+        // Ora l'unica fonte è un Worker Cloudflare del tuo account (piano gratuito: 100.000
+        // richieste/giorno) che scarica la pagina di YouTube lato server - niente CORS da
+        // aggirare, niente limite di dimensione imposto da un proxy di terzi. Il codice del
+        // Worker è nel file sbixify-search-worker.js allegato, da distribuire una tantum su
+        // dash.cloudflare.com (istruzioni nei commenti in cima a quel file).
+        //
+        // IMPORTANTE: sostituisci il valore qui sotto con l'URL del TUO Worker una volta
+        // distribuito (es. 'https://sbixify-search.tuonome.workers.dev'), altrimenti la
+        // ricerca non funziona.
+        const WORKER_URL = 'https://sbixify.bix20252025.workers.dev';
 
         async function youtubeSearch(params) {
-            // Pagina successiva di una ricerca già iniziata: il pageToken incapsula già
-            // quale fonte/istanza ha risposto per la prima pagina, quindi replichiamo la
-            // richiesta lì invece di far ripartire la corsa fra tutte le istanze.
-            if (params.pageToken) {
-                try {
-                    const token = JSON.parse(params.pageToken);
-                    if (token.p === 'inv') return await fetchInvidiousSearch(token.instance, params, token.page);
-                    if (token.p === 'piped') return await fetchPipedSearch(token.instance, params, token.nextpage);
-                } catch (err) {
-                    console.warn('Token di paginazione non valido, riparto dalla prima pagina:', err);
-                }
-            }
+            let url = `${WORKER_URL}/search?q=${encodeURIComponent(params.q || '')}`;
+            if (params.videoDuration) url += `&videoDuration=${params.videoDuration}`;
 
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
             try {
-                const scrapeResult = await fetchYoutubeScrapeSearch(params);
-                if (scrapeResult && scrapeResult.items && scrapeResult.items.length > 0) return scrapeResult;
-                console.warn('Scraping YouTube riuscito ma zero risultati, provo Invidious/Piped...');
+                const res = await fetch(url, { signal: controller.signal });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                return data; // { items:[...], nextPageToken:'' }
             } catch (err) {
-                console.warn('Scraping YouTube fallito, provo Invidious/Piped:', err.message || err);
+                console.warn('Ricerca tramite Worker fallita:', err.message || err);
+                return null;
+            } finally {
+                clearTimeout(timer);
             }
-
-            const invidiousResult = await raceInstances(INVIDIOUS_INSTANCES, instance => fetchInvidiousSearch(instance, params, 1));
-            if (invidiousResult && invidiousResult.items && invidiousResult.items.length > 0) return invidiousResult;
-
-            const pipedResult = await raceInstances(PIPED_INSTANCES, instance => fetchPipedSearch(instance, params, null));
-            if (pipedResult && pipedResult.items && pipedResult.items.length > 0) return pipedResult;
-
-            // Nessuna fonte ha trovato risultati: se almeno una ha risposto correttamente
-            // (anche vuota), la restituiamo com'è invece di far sembrare che TUTTE le
-            // fonti siano irraggiungibili (quel badge di errore è per quel caso, diverso
-            // da "ricerca senza risultati").
-            if (invidiousResult) return invidiousResult;
-            if (pipedResult) return pipedResult;
-            return null; // nessuna fonte ha risposto
         }
 
         async function performSearch(isLoadMore = false) {
@@ -3981,7 +3744,7 @@
                 const data = await youtubeSearch(params);
 
                 if (!data) {
-                    throw new Error('Nessun servizio di ricerca pubblico ha risposto');
+                    throw new Error('Il server di ricerca non ha risposto');
                 }
 
                 document.getElementById('apiErrorBadge')?.classList.add('hidden');
@@ -4014,7 +3777,7 @@
                         <div class="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-center max-w-xs mx-auto">
                             <i class="fa-solid fa-triangle-exclamation text-red-500 text-lg mb-2"></i>
                             <p class="text-xs font-bold text-red-400">Ricerca YouTube non disponibile</p>
-                            <p class="text-[10px] mt-1 custom-text-muted">Nessuno dei server pubblici di ricerca ha risposto in tempo. Riprova tra poco.</p>
+                            <p class="text-[10px] mt-1 custom-text-muted">Il server di ricerca non ha risposto in tempo. Riprova tra poco.</p>
                         </div>
                     `;
                 }

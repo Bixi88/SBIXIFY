@@ -884,6 +884,14 @@
             -webkit-text-stroke-color: var(--bg-gradient-top);
         }
         html.walkman .results-header .rt { color: var(--walkman-highlight) !important; }
+        /* Icona download nell'header "In Riproduzione": qui --accent è il bianco/argento
+           del resto dell'interfaccia (stesso motivo del repeat/sleep timer sopra), quindi
+           va forzata sullo stesso viola "highlight" per restare accentata come nelle
+           altre skin invece di confondersi con le altre icone bianche dell'header. */
+        html.walkman #sheetDownloadBtn,
+        html.walkman #sheetDownloadBtn i {
+            color: var(--walkman-highlight) !important;
+        }
         html.walkman #pwaInstallBtn {
             background: transparent !important;
             border: 1px solid var(--text-main);
@@ -1136,10 +1144,10 @@
             -webkit-text-stroke-color: rgba(255,255,255,0.35);
         }
         /* Pulsante download nell'header "In Riproduzione": era rimasto sullo stile
-           "piatto" (solo icona, colore --accent) mentre avanti/indietro sono diventati
-           cerchi in vetro frosted — disallineato dal resto dei controlli. Stesso
-           trattamento identico: stesso sfondo/bordo dei pulsanti avanti/indietro,
-           icona bianca piena invece del viola di --accent. Resta disabilitato/appannato
+           "piatto" (solo icona) mentre avanti/indietro sono diventati cerchi in vetro
+           frosted — disallineato dal resto dei controlli. Stesso trattamento identico:
+           stesso sfondo/bordo dei pulsanti avanti/indietro. Icona in viola accento (come
+           tutte le icone download dell'app), non più bianca. Resta disabilitato/appannato
            (opacity-30 già in classe HTML), qui sistemo solo colori e forma. */
         html.frosted #sheetDownloadBtn {
             width: 25px; height: 25px;
@@ -1147,9 +1155,9 @@
             background: var(--frosted-btn);
             border: 1px solid rgba(255,255,255,0.35);
             border-radius: 50%;
-            color: #fff !important;
+            color: var(--accent) !important;
         }
-        html.frosted #sheetDownloadBtn i { color: #fff !important; }
+        html.frosted #sheetDownloadBtn i { color: var(--accent) !important; }
         /* Barra del minutaggio: binario in vetro chiaro, riempimento viola acceso. */
         html.frosted #progressBarContainer > div:first-child,
         html.frosted #miniProgressBarContainer > div:first-child {
@@ -1340,6 +1348,10 @@
            sfondo blu-teal di questa skin risultava poco leggibile. Stesso indaco-violetto
            chiaro già usato altrove in Frosted per lo stesso problema di contrasto. */
         html.frosted .lyrics-line.active { color: var(--frosted-highlight); }
+        /* Stesso motivo di repeat/sleep timer/download qui sopra: --accent in questo tema
+           è bianco/argento, quindi la riga di testo "cantata ora" risultava bianca invece
+           che nel viola highlight riservato agli stati attivi. */
+        html.walkman .lyrics-line.active { color: var(--walkman-highlight); }
     </style>
 </head>
 <body class="flex flex-col justify-between hidden p-4 box-border h-full custom-bg-main relative">
@@ -2846,76 +2858,61 @@
         }
 
         // Swipe ORIZZONTALE sulla fascia artwork (#artworkBand): verso sinistra col vinile
-        // in vista apre i testi (il disco scorre via a sinistra, il testo entra da destra);
-        // verso destra col testo in vista torna al vinile. Durante il trascinamento i due
-        // livelli seguono live il dito (via CSS var --drag), poi scattano in posizione
-        // aperta/chiusa al rilascio in base alla soglia. touch-action:pan-y sulla fascia
-        // lascia comunque funzionare lo scroll verticale del testo quando è già mostrato.
+        // in vista apre i testi, verso destra col testo in vista torna al vinile. NIENTE
+        // trascinamento live: il dito non "sposta" nulla in tempo reale (quello causava
+        // scatti percepiti come se si muovesse "tutta la UI" invece dei soli vinile/testo).
+        // Superata una piccola soglia minima scatta SEMPRE la stessa transizione automatica
+        // già definita in CSS (classe "lyrics-shown" su #artworkBand, vedi sopra): stessa
+        // durata/curva a prescindere da quanto o quanto velocemente l'utente ha swipato.
+        // Uno swipe verso il basso mentre il vinile è in vista viene invece inoltrato alla
+        // stessa gestione di chiusura sheet usata da #sheetSwipeCloseArea (vedi
+        // sheetCloseStart/Move/End più sotto): altrimenti, essendo questa fascia sopra
+        // quell'area con eventi propri attivi su tutta la sua altezza, il gesto di
+        // chiusura lì sotto non riceverebbe mai il tocco.
         function setupLyricsPanel() {
             const band = document.getElementById('artworkBand');
-            const vinyl = document.getElementById('vinylSlide');
-            const panel = document.getElementById('lyricsPanel');
-            const scrollEl = document.getElementById('lyricsScroll');
+            const SWIPE_THRESHOLD = 40;
 
-            let startX = 0, startY = 0, dragX = 0, isDragging = false, gestureDecided = false, isHorizontal = false;
-            const width = () => band.offsetWidth || 300;
-
-            const applyDrag = (dx) => {
-                const shown = band.classList.contains('lyrics-shown');
-                // Base: 0 se vinile in vista, -width se testo in vista (punto di partenza
-                // della traccia), poi sommiamo lo spostamento del dito.
-                const base = shown ? -width() : 0;
-                let pos = base + dx;
-                pos = Math.max(-width(), Math.min(0, pos));
-                band.classList.add('dragging');
-                vinyl.style.transform = `translate3d(${pos}px, 0, 0)`;
-                vinyl.style.opacity = String(1 + pos / width());
-                panel.style.transform = `translate3d(${pos + width()}px, 0, 0)`;
-            };
-
-            const resetInlineStyles = () => {
-                band.classList.remove('dragging');
-                vinyl.style.transform = '';
-                vinyl.style.opacity = '';
-                panel.style.transform = '';
-            };
+            let startX = 0, startY = 0, isDragging = false, gestureDecided = false, isHorizontal = false, triggered = false, forwardingClose = false;
 
             const onStart = (x, y) => {
-                startX = x; startY = y; dragX = 0;
-                isDragging = true; gestureDecided = false; isHorizontal = false;
+                startX = x; startY = y;
+                isDragging = true; gestureDecided = false; isHorizontal = false; triggered = false; forwardingClose = false;
             };
             const onMove = (x, y, evt) => {
                 if (!isDragging) return;
+                if (forwardingClose) { sheetCloseMove(y); return; }
                 const dx = x - startX, dy = y - startY;
                 if (!gestureDecided) {
                     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
                     gestureDecided = true;
                     isHorizontal = Math.abs(dx) > Math.abs(dy);
-                    // Se il testo è già mostrato ed è uno scroll verticale, o se non
-                    // siamo in cima e si va comunque in orizzontale, lasciamo fare al
-                    // browser (scroll naturale della lista testi).
-                    if (!isHorizontal) { isDragging = false; return; }
+                    if (!isHorizontal) {
+                        if (dy > 0 && !band.classList.contains('lyrics-shown')) {
+                            forwardingClose = true;
+                            sheetCloseStart(startY);
+                            sheetCloseMove(y);
+                        } else {
+                            isDragging = false;
+                        }
+                        return;
+                    }
                 }
-                if (!isHorizontal) return;
+                if (!isHorizontal || triggered) return;
                 // In vista vinile si può solo swipare a sinistra (dx<0) per aprire; in
-                // vista testo si può solo swipare a destra (dx>0) per chiudere - evita di
-                // "strappare" oltre i due soli stati possibili.
+                // vista testo si può solo swipare a destra (dx>0) per chiudere.
                 const shown = band.classList.contains('lyrics-shown');
                 if ((!shown && dx > 0) || (shown && dx < 0)) return;
                 if (evt && evt.cancelable) evt.preventDefault();
-                dragX = dx;
-                applyDrag(dx);
+                if (Math.abs(dx) > SWIPE_THRESHOLD) {
+                    triggered = true;
+                    if (!shown) openLyricsPanel(); else closeLyricsPanel();
+                }
             };
             const onEnd = () => {
                 if (!isDragging) return;
                 isDragging = false;
-                if (!gestureDecided || !isHorizontal) { resetInlineStyles(); return; }
-                const shown = band.classList.contains('lyrics-shown');
-                const threshold = width() * 0.28;
-                resetInlineStyles();
-                if (!shown && dragX < -threshold) openLyricsPanel();
-                else if (shown && dragX > threshold) closeLyricsPanel();
-                dragX = 0;
+                if (forwardingClose) { forwardingClose = false; sheetCloseEnd(); }
             };
 
             band.addEventListener('touchstart', (e) => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
@@ -2926,11 +2923,6 @@
             band.addEventListener('mousedown', (e) => { if (e.target.closest('button')) return; onStart(e.clientX, e.clientY); });
             window.addEventListener('mousemove', (e) => { if (isDragging) onMove(e.clientX, e.clientY); });
             window.addEventListener('mouseup', onEnd);
-
-            void scrollEl; // riferimento tenuto per chiarezza, lo scroll verticale della
-                            // lista è nativo (touch-action: pan-y su #artworkBand) e non
-                            // richiede gestori dedicati: onMove sopra si disattiva da solo
-                            // (isDragging = false) non appena riconosce un gesto verticale.
         }
 
 
@@ -3052,55 +3044,75 @@
             window.addEventListener('mouseup', onEnd);
         }
 
+        // Gesture di chiusura "swipe verso il basso" della Now Playing sheet: tenuta in
+        // variabili/funzioni condivise (non più chiuse dentro setupSheetCloseSwipe) così
+        // può essere richiamata anche da altri punti che intercettano il tocco PRIMA che
+        // arrivi a #sheetSwipeCloseArea - in particolare la fascia vinile in
+        // setupLyricsPanel, che sta sopra quest'area e altrimenti le rubava ogni tocco
+        // verticale senza lasciarglielo mai ricevere.
+        let sheetCloseIsDragging = false, sheetCloseStartY = 0, sheetCloseCurrentY = 0, sheetCloseBasePercent = -100;
+
+        function sheetCloseStart(y) {
+            sheetCloseIsDragging = true;
+            sheetCloseStartY = y;
+            // Parte sempre da dove la sheet si trova realmente in quel momento, anche se
+            // arriva a metà di un'animazione precedente non ancora terminata.
+            sheetCloseBasePercent = getSheetCurrentPercentY();
+            nowPlayingSheet.style.transition = 'none';
+        }
+
+        function sheetCloseMove(y) {
+            if (!sheetCloseIsDragging) return;
+            sheetCloseCurrentY = y - sheetCloseStartY;
+            if (sheetCloseCurrentY > 0) {
+                const height = nowPlayingSheet.offsetHeight || window.innerHeight;
+                const dragPercent = (sheetCloseCurrentY / height) * 100;
+                const nextPercent = Math.min(0, sheetCloseBasePercent + dragPercent);
+                window.requestAnimationFrame(() => {
+                    if (sheetCloseIsDragging) {
+                        nowPlayingSheet.style.transform = `translate3d(0, ${nextPercent}%, 0)`;
+                    }
+                });
+            }
+        }
+
+        function sheetCloseEnd() {
+            if (!sheetCloseIsDragging) return;
+            sheetCloseIsDragging = false;
+
+            nowPlayingSheet.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+
+            if (sheetCloseCurrentY > 100) {
+                hapticFeedback();
+                closeNowPlayingSheet();
+            } else {
+                nowPlayingSheet.style.transform = '';
+            }
+            sheetCloseCurrentY = 0;
+        }
+
         function setupSheetCloseSwipe() {
-            let startY = 0, currentY = 0, isDragging = false, basePercent = -100;
+            // #sheetSwipeCloseArea copre header + fascia vinile per lo swipe-down "libero"
+            // (fuori da bottoni/testo), #sheetHeaderDrag riceve lo stesso gesto quando parte
+            // esattamente sull'header (che sta sopra quell'area con eventi propri attivi).
+            const header = document.getElementById('sheetHeaderDrag');
+            const targets = [sheetSwipeCloseArea, header].filter(Boolean);
 
-            const onStart = (y) => {
-                isDragging = true;
-                startY = y;
-                // Parte sempre da dove la sheet si trova realmente in quel momento, anche se
-                // arriva a metà di un'animazione precedente non ancora terminata.
-                basePercent = getSheetCurrentPercentY();
-                nowPlayingSheet.style.transition = 'none';
-            };
+            targets.forEach(el => {
+                el.addEventListener('touchstart', (e) => {
+                    if (e.target.closest('button')) return;
+                    sheetCloseStart(e.touches[0].clientY);
+                }, { passive: true });
+                el.addEventListener('touchmove', (e) => sheetCloseMove(e.touches[0].clientY), { passive: true });
+                el.addEventListener('touchend', sheetCloseEnd, { passive: true });
 
-            const onMove = (y) => {
-                if (!isDragging) return;
-                currentY = y - startY;
-                if (currentY > 0) {
-                    const height = nowPlayingSheet.offsetHeight || window.innerHeight;
-                    const dragPercent = (currentY / height) * 100;
-                    const nextPercent = Math.min(0, basePercent + dragPercent);
-                    window.requestAnimationFrame(() => {
-                        if (isDragging) {
-                            nowPlayingSheet.style.transform = `translate3d(0, ${nextPercent}%, 0)`;
-                        }
-                    });
-                }
-            };
-
-            const onEnd = () => {
-                if (!isDragging) return;
-                isDragging = false;
-                
-                nowPlayingSheet.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
-                
-                if (currentY > 100) {
-                    hapticFeedback();
-                    closeNowPlayingSheet();
-                } else {
-                    nowPlayingSheet.style.transform = '';
-                }
-                currentY = 0;
-            };
-
-            sheetSwipeCloseArea.addEventListener('touchstart', (e) => onStart(e.touches[0].clientY), { passive: true });
-            sheetSwipeCloseArea.addEventListener('touchmove', (e) => onMove(e.touches[0].clientY), { passive: true });
-            sheetSwipeCloseArea.addEventListener('touchend', onEnd, { passive: true });
-
-            sheetSwipeCloseArea.addEventListener('mousedown', (e) => onStart(e.clientY));
-            window.addEventListener('mousemove', (e) => { if(isDragging) onMove(e.clientY); });
-            window.addEventListener('mouseup', onEnd);
+                el.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('button')) return;
+                    sheetCloseStart(e.clientY);
+                });
+            });
+            window.addEventListener('mousemove', (e) => { if (sheetCloseIsDragging) sheetCloseMove(e.clientY); });
+            window.addEventListener('mouseup', sheetCloseEnd);
         }
 
         function setupSwipeHandlers() {

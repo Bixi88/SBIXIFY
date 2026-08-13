@@ -1196,6 +1196,101 @@
         /* Interruttore "Rotazione vinile" nelle Impostazioni: stessa pillola a due
            stati del selettore Tema, riutilizzando le stesse classi/variabili così i due
            controlli restano visivamente coerenti. */
+        /* ================= Testi sincronizzati (swipe-up sul vinile) =================
+           Pannello che copre header+artwork della now playing sheet, aperto con uno
+           swipe verso l'alto sul vinile (o tap sull'hint), chiuso con swipe verso il
+           basso o tap sulla freccia. La riga "cantata ora" è evidenziata con
+           --accent (si adatta automaticamente al tema attivo, niente verde fisso alla
+           Spotify), le altre restano attenuate. Lo scroll automatico centra sempre la
+           riga attiva. */
+        #lyricsPanel {
+            position: absolute;
+            inset: 0;
+            bottom: 0;
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-gradient);
+            opacity: 0;
+            transform: translate3d(0, 24px, 0);
+            pointer-events: none;
+            transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #lyricsPanel.open {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            pointer-events: auto;
+        }
+        #lyricsPanel.dragging { transition: none; }
+        #lyricsPanelHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px 8px;
+            flex-shrink: 0;
+        }
+        #lyricsCloseBtn {
+            color: var(--text-muted);
+            padding: 8px;
+            font-size: 17px;
+        }
+        #lyricsCloseBtn:active { transform: scale(0.9); }
+        #lyricsScroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 26px 40vh;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        #lyricsScroll::-webkit-scrollbar { display: none; }
+        .lyrics-line {
+            font-size: 21px;
+            line-height: 1.5;
+            font-weight: 800;
+            color: var(--text-muted);
+            opacity: 0.55;
+            padding: 9px 0;
+            transform-origin: left center;
+            transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
+        }
+        .lyrics-line.active {
+            color: var(--accent);
+            opacity: 1;
+            transform: scale(1.035);
+        }
+        .lyrics-line.past { opacity: 0.32; }
+        .lyrics-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 0 40px;
+            font-size: 14px;
+        }
+        .lyrics-state i { font-size: 26px; opacity: 0.6; }
+        /* Piccola freccetta che pulsa sopra il vinile, unico hint visivo per lo swipe-up
+           (nessun testo/etichetta che affollerebbe la schermata di riproduzione). */
+        #lyricsHint {
+            position: absolute;
+            left: 50%;
+            bottom: -6px;
+            transform: translateX(-50%);
+            color: var(--text-muted);
+            font-size: 13px;
+            opacity: 0.55;
+            animation: lyricsHintBounce 2.2s ease-in-out infinite;
+            pointer-events: none;
+        }
+        #lyricsHint.hidden-hint { display: none; }
+        @keyframes lyricsHintBounce {
+            0%, 100% { transform: translate(-50%, 0); opacity: 0.55; }
+            50% { transform: translate(-50%, -5px); opacity: 0.9; }
+        }
+
         .vinyl-toggle-row { margin-top:18px; }
         .vinyl-toggle { position:relative; display:flex; gap:6px; background:var(--bg-input); padding:4px; border-radius:14px; }
         .vinyl-toggle-thumb {
@@ -1386,6 +1481,19 @@
 
         <div id="sheetSwipeCloseArea" class="absolute inset-x-0 top-0 z-10 cursor-grab active:cursor-grabbing" style="touch-action: none; bottom: 310px;"></div>
 
+        <!-- Pannello testi sincronizzati: nascosto di default (classe .open lo mostra),
+             copre header+artwork. Aperto con swipe-up sul vinile, chiuso con swipe-down
+             o tap sulla freccia. -->
+        <div id="lyricsPanel">
+            <div id="lyricsPanelHeader">
+                <button id="lyricsCloseBtn" title="Chiudi testi">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+                <span class="text-[11px] font-bold uppercase tracking-[0.14em]" style="color:var(--text-muted);">Testo</span>
+                <span style="width:33px;"></span>
+            </div>
+            <div id="lyricsScroll"></div>
+        </div>
 
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
             <div id="sheetHeaderDrag" class="w-full flex flex-col items-center py-2 shrink-0 cursor-pointer pointer-events-auto">
@@ -1419,6 +1527,7 @@
                     <div id="sheetArtworkFrame" class="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.7)] opacity-0 transition-opacity duration-300">
                         <img id="sheetArtworkImg" class="w-full h-full object-cover" alt="">
                     </div>
+                    <i class="fa-solid fa-chevron-up" id="lyricsHint"></i>
                 </div>
             </div>
 
@@ -2456,6 +2565,7 @@
             setupSwipeHandlers();
             setupSheetCloseSwipe();
             setupSettingsSheetSwipe();
+            setupLyricsPanel();
             checkAndApplyMarquee();
         });
 
@@ -2507,6 +2617,280 @@
                 nowPlayingSheet.classList.remove('expanded');
                 nowPlayingSheet.style.transform = '';
             }
+        }
+
+        // ================= TESTI SINCRONIZZATI (swipe-up sul vinile) =================
+        // Fonte: lrclib.net, gratuita e senza API key, con CORS aperto - stesso spirito
+        // delle altre chiamate dirette che già facciamo (iTunes, TheAudioDB, Deezer).
+        // Cache in localStorage con lo stesso schema di TRACK_CACHE (chiave normalizzata
+        // titolo+artista), per non richiedere di nuovo lo stesso testo ad ogni riascolto.
+        const LYRICS_CACHE_KEY = 'sbixify_lyrics_cache';
+        const LYRICS_CACHE_MAX = 500;
+        let lyricsCacheMemory = null;
+
+        function loadLyricsCache() {
+            if (lyricsCacheMemory) return lyricsCacheMemory;
+            try {
+                const raw = JSON.parse(localStorage.getItem(LYRICS_CACHE_KEY));
+                lyricsCacheMemory = raw && typeof raw === 'object' ? raw : {};
+            } catch (err) {
+                lyricsCacheMemory = {};
+            }
+            return lyricsCacheMemory;
+        }
+
+        function saveLyricsCache(cache) {
+            lyricsCacheMemory = cache;
+            try {
+                localStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache));
+            } catch (err) {
+                console.warn('Impossibile salvare la cache dei testi:', err);
+            }
+        }
+
+        function setCachedLyrics(title, artist, data) {
+            if (!title) return;
+            const cache = loadLyricsCache();
+            const key = trackCacheKey(title, artist);
+            cache[key] = { ...data, ts: Date.now() };
+            const keys = Object.keys(cache);
+            if (keys.length > LYRICS_CACHE_MAX) {
+                keys.sort((a, b) => (cache[a].ts || 0) - (cache[b].ts || 0));
+                keys.slice(0, keys.length - LYRICS_CACHE_MAX).forEach(k => delete cache[k]);
+            }
+            setTimeout(() => saveLyricsCache(cache), 0);
+        }
+
+        function getCachedLyrics(title, artist) {
+            const cache = loadLyricsCache();
+            return cache[trackCacheKey(title, artist)] || null;
+        }
+
+        // Converte un blocco LRC ("[mm:ss.xx]testo", riga per riga) in un array
+        // [{time, text}] ordinato, ignorando i metadata tag ([ar:]/[ti:]/[al:] etc.) e le
+        // righe vuote. Alcune righe hanno più timestamp ripetuti (stessa riga cantata due
+        // volte in punti diversi): li trattiamo come righe separate, è corretto per lo
+        // scopo dell'evidenziazione a schermo.
+        function parseLrc(lrc) {
+            if (!lrc) return [];
+            const lines = [];
+            const timeTag = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+            lrc.split('\n').forEach(rawLine => {
+                const tags = [...rawLine.matchAll(timeTag)];
+                if (tags.length === 0) return;
+                const text = rawLine.replace(timeTag, '').trim();
+                if (!text) return;
+                tags.forEach(m => {
+                    const min = parseInt(m[1], 10), sec = parseInt(m[2], 10);
+                    const ms = m[3] ? parseInt(m[3].padEnd(3, '0'), 10) : 0;
+                    lines.push({ time: min * 60 + sec + ms / 1000, text });
+                });
+            });
+            lines.sort((a, b) => a.time - b.time);
+            return lines;
+        }
+
+        // Interroga lrclib: prima /api/get (match esatto su titolo+artista+durata, il più
+        // affidabile quando la durata combacia), poi /api/search come ripiego più
+        // permissivo se il primo non trova nulla o la durata non è ancora disponibile.
+        async function fetchSyncedLyricsFromLrclib(title, artist, durationSeconds) {
+            const params = new URLSearchParams({ track_name: title, artist_name: artist || '' });
+            if (durationSeconds) params.set('duration', String(Math.round(durationSeconds)));
+            try {
+                const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && (data.syncedLyrics || data.plainLyrics)) return data;
+                }
+            } catch (err) {
+                console.warn('lrclib /get fallito:', err);
+            }
+            try {
+                const searchParams = new URLSearchParams({ track_name: title, artist_name: artist || '' });
+                const res = await fetch(`https://lrclib.net/api/search?${searchParams.toString()}`);
+                if (res.ok) {
+                    const results = await res.json();
+                    if (Array.isArray(results) && results.length > 0) {
+                        // Preferiamo il primo risultato con testo sincronizzato disponibile.
+                        const withSync = results.find(r => r.syncedLyrics) || results[0];
+                        if (withSync && (withSync.syncedLyrics || withSync.plainLyrics)) return withSync;
+                    }
+                }
+            } catch (err) {
+                console.warn('lrclib /search fallito:', err);
+            }
+            return null;
+        }
+
+        let lyricsLines = [];           // [{time, text}] del brano attualmente mostrato
+        let lyricsActiveIndex = -1;
+        let lyricsRequestToken = 0;     // scarta risposte arrivate in ritardo per un brano già cambiato
+        let lyricsOpen = false;
+
+        function renderLyricsState(iconClass, message) {
+            const scroll = document.getElementById('lyricsScroll');
+            scroll.innerHTML = `<div class="lyrics-state"><i class="fa-solid ${iconClass}"></i><span>${message}</span></div>`;
+        }
+
+        function renderLyricsLines() {
+            const scroll = document.getElementById('lyricsScroll');
+            scroll.innerHTML = lyricsLines.map((line, i) =>
+                `<div class="lyrics-line" data-index="${i}">${escapeHtml(line.text)}</div>`
+            ).join('');
+            lyricsActiveIndex = -1;
+        }
+
+        // Richiamata da loadTrack() ad ogni cambio brano: azzera lo stato precedente e
+        // avvia il fetch per il nuovo. Non blocca né apre nulla di per sé - l'utente vede
+        // il risultato solo se/quando apre il pannello con lo swipe.
+        async function loadLyricsForCurrentTrack(track) {
+            const myToken = ++lyricsRequestToken;
+            lyricsLines = [];
+            lyricsActiveIndex = -1;
+            renderLyricsState('fa-spinner fa-spin-pulse', 'Ricerca testo…');
+
+            if (!track || !track.title) {
+                renderLyricsState('fa-music', 'Nessun testo disponibile');
+                return;
+            }
+            const artist = primaryArtistOf(track.channel);
+            const cached = getCachedLyrics(track.title, artist);
+            let data = cached;
+            if (!data) {
+                const duration = player?.getDuration ? player.getDuration() : 0;
+                data = await fetchSyncedLyricsFromLrclib(track.title, artist, duration);
+                if (data) setCachedLyrics(track.title, artist, data);
+            }
+            if (myToken !== lyricsRequestToken) return; // il brano è già cambiato di nuovo
+
+            if (data && data.syncedLyrics) {
+                lyricsLines = parseLrc(data.syncedLyrics);
+                if (lyricsLines.length > 0) { renderLyricsLines(); return; }
+            }
+            if (data && data.plainLyrics) {
+                // Solo testo, senza timestamp: niente evidenziazione riga per riga, ma
+                // meglio che nulla.
+                const scroll = document.getElementById('lyricsScroll');
+                scroll.innerHTML = data.plainLyrics.split('\n').filter(l => l.trim())
+                    .map(l => `<div class="lyrics-line" style="opacity:.75;">${escapeHtml(l)}</div>`).join('');
+                lyricsLines = [];
+                return;
+            }
+            renderLyricsState('fa-music', 'Nessun testo disponibile per questo brano');
+        }
+
+        // Aggiornamento riga attiva: chiamato dal loop di progresso già esistente
+        // (startProgressLoop), non ne serve uno separato. Trova l'ultima riga con
+        // time <= currentTime e, se è cambiata rispetto a prima, aggiorna le classi e
+        // fa lo scroll automatico per tenerla centrata.
+        function updateActiveLyricLine(currentTime) {
+            if (!lyricsOpen || lyricsLines.length === 0) return;
+            let idx = -1;
+            for (let i = 0; i < lyricsLines.length; i++) {
+                if (lyricsLines[i].time <= currentTime) idx = i; else break;
+            }
+            if (idx === lyricsActiveIndex) return;
+            lyricsActiveIndex = idx;
+            const scroll = document.getElementById('lyricsScroll');
+            const allLines = scroll.querySelectorAll('.lyrics-line');
+            allLines.forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+                el.classList.toggle('past', i < idx);
+            });
+            const activeEl = allLines[idx];
+            if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+
+        function openLyricsPanel() {
+            if (lyricsLines.length === 0 && document.getElementById('lyricsScroll').children.length === 0) return;
+            lyricsOpen = true;
+            document.getElementById('lyricsPanel').classList.add('open');
+            hapticFeedback();
+            // Riallinea subito la riga attiva sulla posizione corrente del brano, invece di
+            // aspettare il prossimo tick del loop di progresso.
+            if (player?.getCurrentTime) {
+                lyricsActiveIndex = -1;
+                updateActiveLyricLine(player.getCurrentTime());
+            }
+        }
+
+        function closeLyricsPanel() {
+            lyricsOpen = false;
+            document.getElementById('lyricsPanel').classList.remove('open');
+        }
+
+        function setupLyricsPanel() {
+            const panel = document.getElementById('lyricsPanel');
+            const closeBtn = document.getElementById('lyricsCloseBtn');
+            const header = document.getElementById('lyricsPanelHeader');
+            const scrollEl = document.getElementById('lyricsScroll');
+
+            closeBtn.addEventListener('click', closeLyricsPanel);
+
+            // --- Apertura: swipe verso l'alto sul vinile ---
+            // sheetSwipeCloseArea copre già header+artwork e gestisce lo swipe verso il
+            // basso per chiudere la sheet; qui aggiungiamo in parallelo il riconoscimento
+            // dello swipe in direzione OPPOSTA (verso l'alto) sulla stessa area, senza
+            // toccare quella logica (che ignora già i movimenti con delta negativo).
+            let openStartY = 0, openTracking = false;
+            const onOpenStart = (y) => { openStartY = y; openTracking = true; };
+            const onOpenEnd = (y) => {
+                if (!openTracking) return;
+                openTracking = false;
+                if (openStartY - y > 70) openLyricsPanel();
+            };
+            sheetSwipeCloseArea.addEventListener('touchstart', (e) => onOpenStart(e.touches[0].clientY), { passive: true });
+            sheetSwipeCloseArea.addEventListener('touchend', (e) => onOpenEnd(e.changedTouches[0].clientY), { passive: true });
+            sheetSwipeCloseArea.addEventListener('mousedown', (e) => onOpenStart(e.clientY));
+            window.addEventListener('mouseup', (e) => { if (openTracking) onOpenEnd(e.clientY); });
+            // Tap diretto sull'hint (freccetta) apre subito, per chi non fa swipe.
+            document.getElementById('lyricsHint').addEventListener('click', openLyricsPanel);
+
+            // --- Chiusura: swipe verso il basso sull'header del pannello, o quando si è
+            // già in cima alla lista (scrollTop 0) e si continua a tirare giù ---
+            let closeStartY = 0, closeCurrentY = 0, isClosingDrag = false;
+            const onCloseStart = (y) => {
+                closeStartY = y;
+                isClosingDrag = true;
+                panel.classList.add('dragging');
+            };
+            const onCloseMove = (y) => {
+                if (!isClosingDrag) return;
+                closeCurrentY = y - closeStartY;
+                if (closeCurrentY > 0) {
+                    panel.style.transform = `translate3d(0, ${closeCurrentY}px, 0)`;
+                    panel.style.opacity = String(Math.max(0.3, 1 - closeCurrentY / 400));
+                }
+            };
+            const onCloseEnd = () => {
+                if (!isClosingDrag) return;
+                isClosingDrag = false;
+                panel.classList.remove('dragging');
+                panel.style.transform = '';
+                panel.style.opacity = '';
+                if (closeCurrentY > 90) closeLyricsPanel();
+                closeCurrentY = 0;
+            };
+            header.addEventListener('touchstart', (e) => onCloseStart(e.touches[0].clientY), { passive: true });
+            header.addEventListener('touchmove', (e) => onCloseMove(e.touches[0].clientY), { passive: true });
+            header.addEventListener('touchend', onCloseEnd, { passive: true });
+
+            let scrollTouchStartY = 0, scrollDragging = false;
+            scrollEl.addEventListener('touchstart', (e) => {
+                scrollTouchStartY = e.touches[0].clientY;
+                scrollDragging = scrollEl.scrollTop <= 0;
+            }, { passive: true });
+            scrollEl.addEventListener('touchmove', (e) => {
+                if (!scrollDragging) return;
+                const delta = e.touches[0].clientY - scrollTouchStartY;
+                if (delta > 0 && scrollEl.scrollTop <= 0) {
+                    if (!isClosingDrag) onCloseStart(scrollTouchStartY);
+                    onCloseMove(e.touches[0].clientY);
+                } else {
+                    scrollDragging = false;
+                }
+            }, { passive: true });
+            scrollEl.addEventListener('touchend', () => { if (isClosingDrag) onCloseEnd(); scrollDragging = false; }, { passive: true });
         }
 
         function setupFilterDropdowns() {
@@ -3261,6 +3645,8 @@
             const miniChannelEl = document.getElementById('miniPlayerChannel');
             if (miniChannelEl) miniChannelEl.innerText = track.channel;
             checkAndApplyMiniMarquee(track.title);
+            closeLyricsPanel();
+            loadLyricsForCurrentTrack(track);
 
             const sheetImg = document.getElementById('sheetArtworkImg');
             const miniImg = document.getElementById('miniPlayerImg');
@@ -4901,6 +5287,11 @@
             if (titleEl) titleEl.innerText = track.title;
             if (channelEl) channelEl.innerText = track.channel;
 
+            // Nuovo brano: il pannello testi torna sempre alla copertina (se era aperto)
+            // e parte subito la ricerca del testo sincronizzato per quello nuovo.
+            closeLyricsPanel();
+            loadLyricsForCurrentTrack(track);
+
             const sheetImg = document.getElementById('sheetArtworkImg');
             const miniImg = document.getElementById('miniPlayerImg');
             if (track.spotifyImport) {
@@ -5347,6 +5738,7 @@
                         document.getElementById('currentTime').innerText = formatTime(currentTime);
                         document.getElementById('miniCurrentTime').innerText = formatTime(currentTime);
                         updateMediaSessionPosition();
+                        updateActiveLyricLine(currentTime);
                     }
 
                     if (duration > 0) {

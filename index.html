@@ -1578,7 +1578,18 @@
         // provarli in sequenza significava restare fermi ad aspettarlo per intero prima
         // di passare al secondo. Così invece vince chi risponde prima, e un timeout per
         // parte evita che uno bloccato trascini l'attesa per un minuto intero.
-        async function fetchViaCorsProxy(targetUrl, timeoutMs = 10000) {
+        async function fetchViaCorsProxy(targetUrl, timeoutMs = 10000, noCache = false) {
+            // noCache=true (usato dal pulsante "aggiorna playlist", che deve avere
+            // priorità su OGNI cache): i proxy CORS pubblici che usiamo (specialmente
+            // allorigins.win) cachano spesso le risposte lato loro anche per ore, quindi
+            // richiedere di nuovo lo stesso identico URL può restituire la stessa pagina
+            // di prima anche se su Spotify è già cambiato qualcosa. Aggiungendo un
+            // parametro univoco all'URL target, il proxy la vede come una richiesta mai
+            // vista prima e non ha nulla da servire dalla propria cache. cache:'no-store'
+            // fa lo stesso lavoro sulla cache HTTP del browser.
+            const effectiveTargetUrl = noCache
+                ? targetUrl + (targetUrl.includes('?') ? '&' : '?') + '_ts=' + Date.now()
+                : targetUrl;
             const buildProxyUrls = [
                 u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
                 u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
@@ -1588,7 +1599,7 @@
             const attempts = buildProxyUrls.map(build => {
                 const controller = new AbortController();
                 const timer = setTimeout(() => controller.abort(), timeoutMs);
-                return fetch(build(targetUrl), { signal: controller.signal })
+                return fetch(build(effectiveTargetUrl), { signal: controller.signal, cache: noCache ? 'no-store' : 'default' })
                     .then(res => {
                         if (!res.ok) throw new Error('Proxy CORS non disponibile (' + res.status + ')');
                         return res.arrayBuffer();
@@ -3857,8 +3868,8 @@
         // struttura semantica (una lista di righe, ciascuna con un titolo e - subito sotto - l'artista,
         // come heading) invece che a classi CSS: sono molto più soggette a cambiare a ogni redesign
         // della pagina rispetto ai ruoli/tag semantici usati per l'accessibilità.
-        async function fetchSpotifyEmbedPlaylist(playlistId) {
-            const html = await fetchViaCorsProxy(`https://open.spotify.com/embed/playlist/${playlistId}`);
+        async function fetchSpotifyEmbedPlaylist(playlistId, forceRefresh = false) {
+            const html = await fetchViaCorsProxy(`https://open.spotify.com/embed/playlist/${playlistId}`, 10000, forceRefresh);
             const doc = new DOMParser().parseFromString(html, 'text/html');
 
             // La copertina della playlist ha un attributo alt del tipo "Nome Playlist cover":
@@ -3997,7 +4008,7 @@
             if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
             try {
-                const scraped = await fetchSpotifyEmbedPlaylist(playlistId);
+                const scraped = await fetchSpotifyEmbedPlaylist(playlistId, forceRefresh);
                 const rawTracks = scraped.tracks;
                 const meta = { name: scraped.name, cover: scraped.cover };
 
@@ -4720,13 +4731,16 @@
             // della lista (altrimenti apparterrebbero a una lista diversa, sfogliata dopo).
             const isBrowsingListPlaying = (sourceTracks === appState.tracks);
 
-            // Ferma SUBITO l'audio del brano uscente: se il nuovo brano ha già un id
-            // YouTube, loadVideoById() poco sotto lo sostituirà comunque all'istante,
-            // ma quando serve prima risolvere l'id (brano Spotify mai ascoltato,
-            // richiesta di rete) il vecchio video altrimenti continuerebbe a suonare
-            // in sottofondo per tutta l'attesa. Pausa subito, poi si riparte pulito
-            // con il nuovo brano quando è pronto.
-            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
+            // Ferma SUBITO l'audio del brano uscente, ma SOLO se serve davvero attendere
+            // la rete (id ancora sconosciuto): in quel caso, senza questa pausa, il vecchio
+            // video continuerebbe a suonare in sottofondo per tutta l'attesa.
+            // Se invece l'id è già noto (cache/pre-caricamento), NON la chiamiamo: farlo
+            // comunque significherebbe mandare pauseVideo() e loadVideoById() all'iframe
+            // quasi nello stesso istante (nessun await in mezzo), due comandi che si
+            // accavallano e possono produrre un breve "tick" udibile del brano
+            // precedente - loadVideoById() da solo sostituisce già il video in modo
+            // pulito, senza bisogno di una pausa preventiva.
+            if (!track.id && player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
             // Nuovo brano in caricamento: finché non sappiamo se ha davvero un video
             // riproducibile, il tasto play non deve poter riprendere quello vecchio.
             nowPlayingUnavailable = false;

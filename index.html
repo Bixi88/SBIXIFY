@@ -1896,11 +1896,14 @@
                 syncKeepAlive(true);
                 scheduleQualityUpgrade();
                 // Se questo è il video per cui loadTrack() aveva silenziato il player in
-                // attesa dello swap, ora sta davvero suonando: togliamo il mute con un
-                // piccolissimo margine, così il "tick" iniziale resta nascosto.
+                // attesa dello swap, ora YouTube segnala PLAYING per lui - ma l'audio del
+                // brano precedente può restare in coda ancora per un istante dopo che
+                // l'id risulta già cambiato, quindi aspettiamo un margine più ampio (non
+                // solo qualche decina di ms) prima di togliere il mute, per essere sicuri
+                // che quella coda si sia davvero svuotata.
                 if (pendingUnmuteForVideoId && player?.getVideoData?.()?.video_id === pendingUnmuteForVideoId) {
                     pendingUnmuteForVideoId = null;
-                    setTimeout(() => { if (player?.unMute) { try { player.unMute(); } catch (e) {} } }, 120);
+                    setTimeout(() => { if (player?.unMute) { try { player.unMute(); } catch (e) {} } }, 350);
                 }
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
@@ -4737,24 +4740,31 @@
         async function loadTrack(index, sourceTracks = appState.tracks) {
             if (index < 0 || index >= sourceTracks.length) return;
 
+            // Silenziamo il player SUBITO, come prima cosa in assoluto: prima ancora di
+            // toccare qualunque DOM/stato. Il tick/bleed-through del brano precedente non
+            // veniva dal solo swap di loadVideoById() più avanti, ma anche dal tempo che
+            // passava tra "l'utente ha cambiato brano" e il punto (più in basso, dopo
+            // parecchio lavoro sincrono) in cui il player veniva effettivamente zittito:
+            // in quella finestra il vecchio audio continuava tranquillamente. Mutando qui,
+            // in cima, quella finestra si azzera quasi del tutto.
+            if (player?.mute) { try { player.mute(); } catch (e) {} }
+            // Fermiamo subito anche la decodifica del vecchio video (non solo il volume):
+            // ora che tutta questa fase è comunque coperta dal mute qui sopra, possiamo
+            // farlo sempre (non solo quando l'id del nuovo brano è sconosciuto) senza più
+            // rischiare il tick da comandi accavallati che ci aveva fatto evitare questa
+            // chiamata in passato - è proprio quel "vecchio audio ancora in coda" a
+            // ricomparire per una frazione di secondo quando riattiviamo l'audio più tardi.
+            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
+
             const track = sourceTracks[index];
             // Vero solo se la coda che stiamo caricando è anche quella attualmente mostrata a
             // schermo: solo in quel caso ha senso toccare appState.currentIndex e le righe DOM
             // della lista (altrimenti apparterrebbero a una lista diversa, sfogliata dopo).
             const isBrowsingListPlaying = (sourceTracks === appState.tracks);
 
-            // Ferma SUBITO l'audio del brano uscente, ma SOLO se serve davvero attendere
-            // la rete (id ancora sconosciuto): in quel caso, senza questa pausa, il vecchio
-            // video continuerebbe a suonare in sottofondo per tutta l'attesa.
-            // Se invece l'id è già noto (cache/pre-caricamento), NON la chiamiamo: farlo
-            // comunque significherebbe mandare pauseVideo() e loadVideoById() all'iframe
-            // quasi nello stesso istante (nessun await in mezzo), due comandi che si
-            // accavallano e possono produrre un breve "tick" udibile del brano
-            // precedente - loadVideoById() da solo sostituisce già il video in modo
-            // pulito, senza bisogno di una pausa preventiva.
-            if (!track.id && player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
-            // Nuovo brano in caricamento: finché non sappiamo se ha davvero un video
-            // riproducibile, il tasto play non deve poter riprendere quello vecchio.
+            // Il fermo del brano uscente ora avviene già in cima alla funzione (mute +
+            // pauseVideo), prima ancora di questo punto: qui restava solo il reset dello
+            // stato "non disponibile", che deve comunque avvenire per ogni nuovo brano.
             nowPlayingUnavailable = false;
 
             // CARICAMENTO SUCESSIVO PREVENTIVO ED ESCLUSIVO (solo per liste da ricerca YouTube,
@@ -4880,13 +4890,11 @@
                     // non si sceglie un altro brano.
                     nowPlayingUnavailable = true;
                     if (player?.stopVideo) { try { player.stopVideo(); } catch (e) {} }
-                    // Nessun video partirà per questo brano: se avevamo silenziato in attesa
-                    // dello swap, il mute non verrebbe mai tolto (onPlayerStateChange non
-                    // vedrà mai PLAYING per un id che non esiste più).
-                    if (pendingUnmuteForVideoId) {
-                        pendingUnmuteForVideoId = null;
-                        if (player?.unMute) { try { player.unMute(); } catch (e) {} }
-                    }
+                    // Nessun video partirà per questo brano: il mute applicato in cima alla
+                    // funzione va tolto comunque (onPlayerStateChange non vedrà mai PLAYING
+                    // per un id che non esiste più, quindi non lo farebbe da sé).
+                    pendingUnmuteForVideoId = null;
+                    if (player?.unMute) { try { player.unMute(); } catch (e) {} }
                     appState.isPlaying = false;
                     setPlayIconState(false);
                     return;
@@ -4916,12 +4924,8 @@
             // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.
             clearTimeout(qualityUpgradeTimer);
             qualityUpgradedVideoId = null;
-            // Silenziamo il player un istante prima dello swap: loadVideoById sostituisce
-            // il flusso audio dell'iframe "al volo" e questo produce quasi sempre un breve
-            // "tick" udibile proprio nell'istante dell'attacco del nuovo brano. Il mute
-            // nasconde quel pop; viene tolto da onPlayerStateChange non appena il NUOVO
-            // video (stesso videoId) risulta realmente in stato PLAYING, con un piccolo
-            // margine per lasciare che il pop (silenzioso) sia già passato.
+            // Il mute è già stato applicato in cima alla funzione: qui lo confermiamo (non
+            // costa nulla se è già muto) e segniamo per quale video andrà tolto più avanti.
             if (player?.mute) { try { player.mute(); } catch (e) {} }
             pendingUnmuteForVideoId = track.id || null;
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });

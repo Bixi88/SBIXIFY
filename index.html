@@ -1281,6 +1281,17 @@
         #lyricsScroll {
             flex: 1;
             overflow-y: auto;
+            /* CRITICO: senza questo, quando la riga "cantata ora" si ingrandisce con
+               transform: scale() qui sotto e sborda anche solo di 1px oltre il bordo
+               orizzontale del contenitore, il browser forza automaticamente anche
+               overflow-x a 'auto' (regola CSS: se un asse ha overflow non-visible e
+               l'altro è visible, quello visible diventa auto). #lyricsScroll diventa
+               quindi scrollabile in orizzontale a runtime, esattamente sull'asse dello
+               swipe custom gestito a mano su #artworkBand: i due sistemi si accavallano
+               e il pannello texts scivola/esce dallo schermo appena compare una riga
+               attiva. overflow-x: hidden blocca la conversione automatica e mantiene
+               questo contenitore scrollabile SOLO in verticale, sempre. */
+            overflow-x: hidden;
             padding: 4px 6px;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;

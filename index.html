@@ -2859,7 +2859,18 @@
                 el.classList.toggle('past', i < idx);
             });
             const activeEl = allLines[idx];
-            if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            if (activeEl) {
+                // NON usare scrollIntoView(): con questo layout (pannello dentro un
+                // antenato con transform: translate3d per lo swipe orizzontale) i motori
+                // mobile spesso sbagliano il calcolo dell'"antenato scrollabile più
+                // vicino" e finiscono per scrollare un contenitore molto più esterno
+                // (es. l'intero foglio Now Playing) invece del solo #lyricsScroll -
+                // risultato: tutta la UI scivola e sembra uscire dallo schermo appena
+                // parte lo scroll automatico della riga attiva. Calcolando lo scrollTop
+                // a mano, l'unico elemento che si muove è sempre e solo #lyricsScroll.
+                const targetTop = activeEl.offsetTop - (scroll.clientHeight / 2) + (activeEl.clientHeight / 2);
+                scroll.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+            }
         }
 
         function openLyricsPanel() {

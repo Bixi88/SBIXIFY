@@ -717,23 +717,14 @@
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
         .results-header .refresh-btn:active { transform:scale(0.9); }
 
-        /* ================= HOME: riga "Playlist" + colonna "Canzoni" ================= */
+        /* ================= HOME: griglia "Playlist" (fissa, 3 colonne) + colonna "Canzoni" ================= */
         .quick-eyebrow { padding:22px 6px 4px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); font-weight:600; }
-        .quick-grid {
-            display:flex; gap:16px; overflow-x:auto; overflow-y:hidden; padding:14px 4px 20px;
-            scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
-            -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
-            mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
-        }
-        .quick-grid::-webkit-scrollbar { display:none; }
-        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:22px 14px; padding:14px 4px 20px; justify-items:center; }
+        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; max-width:104px; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }
-        .qcard { position:relative; flex:0 0 84px; scroll-snap-align:start; }
+        .qcard { position:relative; }
         .qcard .circle { width:100%; aspect-ratio:1/1; border-radius:50%; background-size:calc(var(--artwork-zoom) * 100%); background-position:center; background-color:var(--bg-input); position:relative; box-shadow:0 10px 22px -8px rgba(0,0,0,.5); overflow:hidden; }
-        .scroll-dots { display:flex; justify-content:center; align-items:center; gap:5px; padding:0 0 8px; }
-        .scroll-dots span { width:5px; height:5px; border-radius:50%; background:var(--text-muted); opacity:.35; transition:opacity .15s ease, background-color .15s ease; }
-        .scroll-dots span.on { opacity:1; background:var(--accent); }
         .tracks-col { padding:2px 4px 8px; }
         .home-track-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .home-track-row * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
@@ -1489,10 +1480,9 @@
         <section class="flex-1 flex flex-col overflow-hidden h-full relative">
             <div id="viewsSlider" class="flex h-full">
                 <!-- VISTA 1: Home (Recenti) -->
-                <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0">
+                <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0 pb-36">
                     <div class="quick-eyebrow">Playlist</div>
                     <div id="recentGrid" class="quick-grid hidden"></div>
-                    <div id="recentGridDots" class="scroll-dots hidden"></div>
                     <div id="recentTracksSection" class="hidden">
                         <div class="quick-eyebrow">Canzoni</div>
                         <div id="recentTracksCol" class="tracks-col"></div>
@@ -3990,14 +3980,12 @@
 
         function renderRecentHome() {
             const grid = document.getElementById('recentGrid');
-            const dots = document.getElementById('recentGridDots');
             if (!grid) return;
 
             const items = loadRecentItems();
             if (items.length === 0) {
                 grid.classList.add('hidden');
                 grid.innerHTML = '';
-                if (dots) { dots.classList.add('hidden'); dots.innerHTML = ''; }
                 updateEmptyHomeState();
                 return;
             }
@@ -4056,27 +4044,6 @@
                     removeRecentItemFromHome(idx, items[idx]);
                 });
             });
-
-            // Pallini sotto la riga: indicano la posizione dello scroll orizzontale
-            // (sostituiscono il vecchio suggerimento testuale "scorri →"). Con una sola
-            // card non c'è nulla da scorrere, quindi restano nascosti.
-            if (dots) {
-                if (items.length > 1) {
-                    dots.classList.remove('hidden');
-                    dots.innerHTML = items.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
-                    const dotEls = dots.querySelectorAll('span');
-                    grid.onscroll = () => {
-                        const max = grid.scrollWidth - grid.clientWidth;
-                        const pct = max > 0 ? grid.scrollLeft / max : 0;
-                        const active = Math.min(dotEls.length - 1, Math.round(pct * (dotEls.length - 1)));
-                        dotEls.forEach((d, i) => d.classList.toggle('on', i === active));
-                    };
-                } else {
-                    dots.classList.add('hidden');
-                    dots.innerHTML = '';
-                    grid.onscroll = null;
-                }
-            }
 
             updateEmptyHomeState();
         }
@@ -5809,6 +5776,13 @@
             } else {
                 appState.intendedPlaying = true;
                 player.playVideo();
+                // Copre il caso del brano ripristinato all'avvio (restoreLastPlayback):
+                // quello non passa da loadTrack(), quindi è qui che va registrato "Canzoni"
+                // nel momento in cui l'utente lo fa davvero partire per la prima volta.
+                const t = nowPlayingTracks[nowPlayingIndex];
+                if (t && t.id) {
+                    addRecentTrack({ id: t.id, title: t.title, channel: t.channel, thumbnail: t.thumbnail || null, spotifyImport: !!t.spotifyImport });
+                }
             }
         }
 

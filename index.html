@@ -717,14 +717,40 @@
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
         .results-header .refresh-btn:active { transform:scale(0.9); }
 
-        /* ================= HOME: griglia "Recenti" ================= */
+        /* ================= HOME: riga "Playlist" + colonna "Canzoni" ================= */
         .quick-eyebrow { padding:22px 6px 4px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); font-weight:600; }
-        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:22px 14px; padding:14px 4px 20px; }
+        .quick-grid {
+            display:flex; gap:16px; overflow-x:auto; overflow-y:hidden; padding:14px 4px 20px;
+            scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
+            -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+            mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+        }
+        .quick-grid::-webkit-scrollbar { display:none; }
         .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }
-        .qcard { position:relative; }
+        .qcard { position:relative; flex:0 0 84px; scroll-snap-align:start; }
         .qcard .circle { width:100%; aspect-ratio:1/1; border-radius:50%; background-size:calc(var(--artwork-zoom) * 100%); background-position:center; background-color:var(--bg-input); position:relative; box-shadow:0 10px 22px -8px rgba(0,0,0,.5); overflow:hidden; }
+        .scroll-dots { display:flex; justify-content:center; align-items:center; gap:5px; padding:0 0 8px; }
+        .scroll-dots span { width:5px; height:5px; border-radius:50%; background:var(--text-muted); opacity:.35; transition:opacity .15s ease, background-color .15s ease; }
+        .scroll-dots span.on { opacity:1; background:var(--accent); }
+        .tracks-col { padding:2px 4px 8px; }
+        .home-track-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+        .home-track-row * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+        .home-track-row:active { opacity:0.8; }
+        .home-track-row:not(:last-child)::after { content:''; position:absolute; left:66px; right:0; bottom:0; height:1px; background:rgba(255,255,255,0.08); }
+        .home-track-meta { flex:1; min-width:0; }
+        .home-track-meta .t-title { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-main); }
+        .home-track-meta .t-sub { font-size:12.5px; color:var(--text-muted); font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .home-track-row .track-row-delete {
+            width: 30px; height: 30px; border-radius: 50%; flex-shrink:0;
+            display: flex; align-items: center; justify-content: center; font-size: 12px;
+            background: var(--accent); color: var(--bg-main); box-shadow: 0 4px 10px rgba(0,0,0,.45);
+            opacity: 0; transform: scale(0.4); pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .home-track-row.show-delete .track-row-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
+        .home-track-row.show-delete .track-thumb-wrap { animation: qcardShake 0.3s ease; }
         .qcard.latest .circle { box-shadow:0 0 0 3px var(--accent), 0 10px 22px -8px rgba(0,0,0,.5); }
         .qcard.latest .name { color:var(--accent); }
         .qcard .name { font-size:12.5px; font-weight:600; text-align:center; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; color:var(--text-main); }
@@ -1464,11 +1490,16 @@
             <div id="viewsSlider" class="flex h-full">
                 <!-- VISTA 1: Home (Recenti) -->
                 <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0">
-                    <div class="quick-eyebrow">Recenti</div>
+                    <div class="quick-eyebrow">Playlist</div>
                     <div id="recentGrid" class="quick-grid hidden"></div>
+                    <div id="recentGridDots" class="scroll-dots hidden"></div>
+                    <div id="recentTracksSection" class="hidden">
+                        <div class="quick-eyebrow">Canzoni</div>
+                        <div id="recentTracksCol" class="tracks-col"></div>
+                    </div>
                     <div id="emptyHome" class="empty-home">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <p>Usa la barra di ricerca in alto per cercare brani, oppure incolla il link di una playlist Spotify.<br>Le tue ultime playlist appariranno qui.</p>
+                        <p>Usa la barra di ricerca in alto per cercare brani, oppure incolla il link di una playlist Spotify.<br>Le tue ultime playlist e i brani ascoltati appariranno qui.</p>
                     </div>
                 </div>
                 <!-- VISTA 2: Lista Canzoni (risultati ricerca / playlist aperta) -->
@@ -1897,7 +1928,7 @@
         // renderTrackList) con vibrazione dedicata al momento giusto - lasciandola qui
         // vibrerebbe una seconda volta al rilascio dopo ogni pressione prolungata.
         document.addEventListener('click', (e) => {
-            if (e.target.closest('button, [role="button"], .qcard, .settings-playlist-row, .settings-playlist-remove, .correct-song-result')) {
+            if (e.target.closest('button, [role="button"], .qcard, .home-track-row, .settings-playlist-row, .settings-playlist-remove, .correct-song-result')) {
                 hapticFeedback();
             }
         }, true);
@@ -2182,6 +2213,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             setupFilterDropdowns();
             renderRecentHome();
+            renderRecentTracksHome();
             restoreLastPlayback();
             updateRepeatButtonUI();
 
@@ -3945,20 +3977,31 @@
             renderRecentHome();
         }
 
+        // Mostra il messaggio "vuoto" solo se non c'è NÉ una playlist NÉ un brano
+        // recente da mostrare: le due sezioni (Playlist/Canzoni) sono indipendenti,
+        // ciascuna si nasconde da sola quando è vuota (vedi renderRecentHome/
+        // renderRecentTracksHome), ma il messaggio guida iniziale va coordinato tra le due.
+        function updateEmptyHomeState() {
+            const empty = document.getElementById('emptyHome');
+            if (!empty) return;
+            const hasSomething = loadRecentItems().length > 0 || loadRecentTracks().length > 0;
+            empty.classList.toggle('hidden', hasSomething);
+        }
+
         function renderRecentHome() {
             const grid = document.getElementById('recentGrid');
-            const empty = document.getElementById('emptyHome');
+            const dots = document.getElementById('recentGridDots');
             if (!grid) return;
 
             const items = loadRecentItems();
             if (items.length === 0) {
                 grid.classList.add('hidden');
                 grid.innerHTML = '';
-                if (empty) empty.classList.remove('hidden');
+                if (dots) { dots.classList.add('hidden'); dots.innerHTML = ''; }
+                updateEmptyHomeState();
                 return;
             }
 
-            if (empty) empty.classList.add('hidden');
             grid.classList.remove('hidden');
             grid.innerHTML = items.map((it, i) => `
                 <div class="qcard${i === 0 ? ' latest' : ''}" data-index="${i}">
@@ -4013,13 +4056,39 @@
                     removeRecentItemFromHome(idx, items[idx]);
                 });
             });
+
+            // Pallini sotto la riga: indicano la posizione dello scroll orizzontale
+            // (sostituiscono il vecchio suggerimento testuale "scorri →"). Con una sola
+            // card non c'è nulla da scorrere, quindi restano nascosti.
+            if (dots) {
+                if (items.length > 1) {
+                    dots.classList.remove('hidden');
+                    dots.innerHTML = items.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
+                    const dotEls = dots.querySelectorAll('span');
+                    grid.onscroll = () => {
+                        const max = grid.scrollWidth - grid.clientWidth;
+                        const pct = max > 0 ? grid.scrollLeft / max : 0;
+                        const active = Math.min(dotEls.length - 1, Math.round(pct * (dotEls.length - 1)));
+                        dotEls.forEach((d, i) => d.classList.toggle('on', i === active));
+                    };
+                } else {
+                    dots.classList.add('hidden');
+                    dots.innerHTML = '';
+                    grid.onscroll = null;
+                }
+            }
+
+            updateEmptyHomeState();
         }
 
-        // Tap fuori da qualunque card: chiude il pulsante cancella eventualmente aperto,
-        // senza eliminare nulla (comportamento richiesto: fuori = nessuna azione).
+        // Tap fuori da qualunque card/riga: chiude il pulsante cancella eventualmente
+        // aperto, senza eliminare nulla (comportamento richiesto: fuori = nessuna azione).
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.qcard')) {
                 document.querySelectorAll('.qcard.show-delete').forEach(c => c.classList.remove('show-delete'));
+            }
+            if (!e.target.closest('.home-track-row')) {
+                document.querySelectorAll('.home-track-row.show-delete').forEach(c => c.classList.remove('show-delete'));
             }
         });
 
@@ -4055,6 +4124,139 @@
                 }
                 importSpotifyPlaylist(item.url);
             }
+        }
+
+        // --- HOME: "Canzoni" (brani effettivamente ascoltati di recente) ---
+        // Elenco separato dai "Recenti" (che restano solo playlist): qui finisce ogni
+        // brano che l'utente ha davvero riprodotto (da playlist Spotify o da ricerca
+        // YouTube), non le semplici ricerche testuali senza ascolto. Registrato in
+        // loadTrack() una volta che il brano ha un id YouTube risolto.
+        const RECENT_TRACKS_KEY = 'sbixify_recent_tracks';
+        const RECENT_TRACKS_MAX = 6;
+
+        function loadRecentTracks() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(RECENT_TRACKS_KEY));
+                return Array.isArray(raw) ? raw : [];
+            } catch (err) {
+                return [];
+            }
+        }
+
+        function saveRecentTracks(items) {
+            try {
+                localStorage.setItem(RECENT_TRACKS_KEY, JSON.stringify(items));
+            } catch (err) {
+                console.warn('Impossibile salvare i brani recenti:', err);
+            }
+        }
+
+        // Aggiunge (o riporta in cima, se già presente) un brano ascoltato. Dedup per id
+        // YouTube: la stessa canzone risentita non crea una seconda voce.
+        function addRecentTrack({ id, title, channel, thumbnail = null, spotifyImport = false }) {
+            if (!id || !title) return;
+            let items = loadRecentTracks().filter(it => it.id !== id);
+            items.unshift({ id, title, channel, thumbnail, spotifyImport: !!spotifyImport, ts: Date.now() });
+            items = items.slice(0, RECENT_TRACKS_MAX);
+            saveRecentTracks(items);
+            renderRecentTracksHome();
+        }
+
+        function renderRecentTracksHome() {
+            const section = document.getElementById('recentTracksSection');
+            const col = document.getElementById('recentTracksCol');
+            if (!section || !col) return;
+
+            const items = loadRecentTracks();
+            if (items.length === 0) {
+                section.classList.add('hidden');
+                col.innerHTML = '';
+                updateEmptyHomeState();
+                return;
+            }
+
+            section.classList.remove('hidden');
+            col.innerHTML = items.map((it, i) => `
+                <div class="home-track-row" data-index="${i}">
+                    <div class="w-13 h-13 rounded-full overflow-hidden shrink-0 relative track-thumb-wrap" style="width:52px;height:52px;">
+                        <div class="w-full h-full bg-cover bg-center" style="background-color:var(--bg-input);${it.thumbnail ? `background-image:url('${it.thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
+                    </div>
+                    <div class="home-track-meta">
+                        <div class="t-title">${escapeHtml(it.title)}</div>
+                        <div class="t-sub">${escapeHtml(it.channel || '')}</div>
+                    </div>
+                    <button class="track-row-delete" data-index="${i}" title="Rimuovi">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            const LONG_PRESS_MS = 500;
+            col.querySelectorAll('.home-track-row').forEach(row => {
+                const idx = parseInt(row.dataset.index, 10);
+                let pressTimer = null;
+                let longPressFired = false;
+
+                const startPress = () => {
+                    longPressFired = false;
+                    pressTimer = setTimeout(() => {
+                        longPressFired = true;
+                        pressTimer = null;
+                        col.querySelectorAll('.home-track-row.show-delete').forEach(r => r.classList.remove('show-delete'));
+                        row.classList.add('show-delete');
+                    }, LONG_PRESS_MS);
+                };
+                const cancelPress = () => {
+                    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+                };
+
+                row.addEventListener('pointerdown', startPress);
+                row.addEventListener('pointerup', cancelPress);
+                row.addEventListener('pointerleave', cancelPress);
+                row.addEventListener('pointercancel', cancelPress);
+                row.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.track-row-delete')) return;
+                    if (longPressFired) { longPressFired = false; return; }
+                    if (row.classList.contains('show-delete')) {
+                        row.classList.remove('show-delete');
+                        return;
+                    }
+                    openRecentTrack(items[idx]);
+                });
+
+                row.querySelector('.track-row-delete').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeRecentTrackFromHome(idx);
+                });
+            });
+
+            updateEmptyHomeState();
+        }
+
+        function removeRecentTrackFromHome(idx) {
+            let items = loadRecentTracks();
+            items.splice(idx, 1);
+            saveRecentTracks(items);
+            renderRecentTracksHome();
+        }
+
+        // Riapre e riproduce subito un brano già ascoltato in passato: l'id YouTube è
+        // già risolto (lo salviamo in addRecentTrack solo a risoluzione avvenuta), quindi
+        // non serve alcuna nuova ricerca, parte come una playlist di un solo brano.
+        function openRecentTrack(item) {
+            if (!item || !item.id) return;
+            currentListSource = item.spotifyImport ? 'spotify' : 'youtube';
+            nextSearchPageToken = '';
+            appState.tracks = [{ ...item }];
+            appState.currentIndex = -1;
+            currentLoadedKey = 'track:' + item.id;
+            currentLoadedTitle = item.title;
+            toggleDownloadButtons(false);
+            showResultsView(item.title);
+            renderTracklist(0);
+            loadTrack(0);
         }
 
         // Aggiorna l'etichetta in alto nella Now Playing Sheet: se il brano in ascolto
@@ -5401,9 +5603,6 @@
                 displayArtwork(miniImg, track.id);
             }
 
-            // Nota: i "Recenti" mostrano solo playlist, non singole canzoni ascoltate:
-            // qui non viene più registrato nulla per i brani da ricerca YouTube.
-
             if (miniPlayer) {
                 miniPlayer.classList.add('visible');
             }
@@ -5507,6 +5706,13 @@
                 listTitle: nowPlayingListTitle,
                 index: index
             });
+
+            // Registra il brano nella home ("Canzoni") solo ora che ha un id YouTube
+            // valido: qui è garantito, o era già presente o è appena stato risolto poco
+            // sopra (in caso contrario la funzione è già uscita prima di arrivare qui).
+            if (track.id) {
+                addRecentTrack({ id: track.id, title: track.title, channel: track.channel, thumbnail: track.thumbnail || null, spotifyImport: !!track.spotifyImport });
+            }
         }
 
         function updateMediaSessionMetadata(track) {

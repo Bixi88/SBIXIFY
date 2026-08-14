@@ -4,7 +4,7 @@
 // Questa versione va aggiornata SOLO se un giorno modifichi la logica
 // di questo file (nuove strategie di cache, nuovi asset precaricati, ecc.) —
 // non per i normali aggiornamenti di index.html.
-const CACHE_NAME = 'sbixify-cache';
+const CACHE_NAME = 'sbixify-cache-v2';
 
 // Cache separata per le immagini (thumbnail YouTube, artwork iTunes): a
 // differenza della cache dell'app shell, questa non va mai svuotata negli
@@ -32,6 +32,19 @@ const NEVER_CACHE_HOSTS = [
   // di ricerca restano sempre freschi (workers.dev copre qualunque nome
   // di Worker distribuito sul piano gratuito).
   'workers.dev'
+];
+
+// Domini di librerie statiche esterne (Tailwind CDN, Font Awesome, Google Fonts):
+// contenuto che cambia raramente, quindi va cachato (stale-while-revalidate) invece di
+// essere riscaricato ad ogni apertura come una API dinamica. NB: fonts.googleapis.com
+// contiene "googleapis.com" ma va gestito PRIMA del controllo NEVER_CACHE_HOSTS più
+// sotto (quello blocca le vere chiamate API dati di YouTube/Google, non i CSS statici
+// dei font).
+const STATIC_LIB_HOSTS = [
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com'
 ];
 
 self.addEventListener('install', (e) => {
@@ -98,6 +111,25 @@ self.addEventListener('fetch', (e) => {
         } catch (err) {
           return cached || Response.error();
         }
+      })
+    );
+    return;
+  }
+
+  // Librerie statiche esterne (Tailwind CDN, Font Awesome, Google Fonts): cambiano
+  // pochissimo, quindi le serviamo stale-while-revalidate come i nostri asset propri
+  // invece di andare sempre in rete come prima (finivano nel bypass generico più sotto).
+  // Prima ogni apertura doveva riscaricarle da capo da 4 domini esterni diversi: è una
+  // delle cause dell'avvio lento segnalato.
+  if (STATIC_LIB_HOSTS.includes(url.hostname)) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(req);
+        const networkFetch = fetch(req).then((res) => {
+          if (res.ok) cache.put(req, res.clone());
+          return res;
+        }).catch(() => cached || Response.error());
+        return cached || networkFetch;
       })
     );
     return;

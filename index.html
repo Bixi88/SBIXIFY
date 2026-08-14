@@ -675,8 +675,14 @@
         .settings-playlist-remove:active { color: var(--text-main); transform: scale(0.9); }
 
         /* ================= HEADER: home (menu + titolo + pillola ricerca) ================= */
-        .header-stack { display:grid; }
-        .header-stack > .home-header, .header-stack > .results-header { grid-area: 1 / 1; }
+        /* home-header e results-header sono impilati uno sopra l'altro (position:absolute)
+           dentro questo contenitore, che ha un'altezza esplicita in px calcolata via JS
+           (vedi syncHeaderStackHeight) e animata in transizione, in sincrono con lo slide
+           di #viewsSlider: così l'header si RESTRINGE/ALLARGA morbidamente passando da uno
+           stato all'altro invece di saltare di scatto O restare sempre alla dimensione
+           massima (che lasciava un vuoto sotto "freccia + titolo" in vista risultati). */
+        .header-stack { position:relative; overflow:hidden; transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+        .header-stack > .home-header, .header-stack > .results-header { position:absolute; top:0; left:0; right:0; }
         .home-header { padding: 4px 6px 0; opacity:1; pointer-events:auto; transition: opacity 0.2s ease; }
         .home-header.home-hidden { opacity:0; pointer-events:none; }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
@@ -713,8 +719,8 @@
         }
 
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
-        /* Sempre in flusso (mai display:none) così la grid dell'header-stack la conta
-           sempre per calcolare l'altezza: cambia solo l'opacity, mai il layout. */
+        /* Sempre in flusso (mai display:none) così se ne può sempre misurare l'altezza
+           naturale via JS (scrollHeight) per animare .header-stack. */
         .results-header { display:flex; align-items:center; gap:14px; padding:6px 8px 0; height:40px; opacity:0; pointer-events:none; transition: opacity 0.2s ease; }
         .results-header.visible { opacity:1; pointer-events:auto; }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
@@ -5252,10 +5258,32 @@
         }
 
         // --- NAVIGAZIONE ANIMATA TRA VISTA PLAYLIST E VISTA LISTA CANZONI ---
-        // I due header sono impilati in CSS grid (vedi .header-stack): scambiarli è solo un
-        // cambio di opacity, MAI di layout/altezza, quindi può avvenire subito, in sincrono
-        // con lo slide di #viewsSlider, senza più causare salti di contenuto né restare
-        // "congelato" sul vecchio header mentre il contenuto è già cambiato.
+        // I due header sono impilati uno sopra l'altro (position:absolute) dentro
+        // #headerStack, la cui altezza in px viene impostata qui e transita in modo
+        // fluido (CSS transition su .header-stack), in sincrono con lo slide di
+        // #viewsSlider: niente più salti di scatto né vuoti sotto l'header risultati.
+        const headerStackEl = document.querySelector('.header-stack');
+        function syncHeaderStackHeight(showingResults) {
+            if (!headerStackEl) return;
+            const target = showingResults
+                ? document.getElementById('resultsHeader')
+                : document.getElementById('homeHeader');
+            if (target) headerStackEl.style.height = target.scrollHeight + 'px';
+        }
+        // Mentre siamo in home, il pannello filtri può aprirsi/chiudersi e cambiare
+        // l'altezza naturale dell'header: la teniamo sincronizzata in automatico.
+        (function watchHomeHeaderHeight() {
+            const homeHeaderEl = document.getElementById('homeHeader');
+            const slider = document.getElementById('viewsSlider');
+            if (!homeHeaderEl || !window.ResizeObserver) return;
+            new ResizeObserver(() => {
+                if (slider && !slider.classList.contains('showing-results')) {
+                    syncHeaderStackHeight(false);
+                }
+            }).observe(homeHeaderEl);
+        })();
+        syncHeaderStackHeight(false); // stato iniziale: si parte sempre in home
+
         function showResultsView(title) {
             const slider = document.getElementById('viewsSlider');
             if (title) {
@@ -5266,6 +5294,7 @@
             slider.classList.add('showing-results');
             document.getElementById('homeHeader')?.classList.add('home-hidden');
             document.getElementById('resultsHeader')?.classList.add('visible');
+            syncHeaderStackHeight(true);
             window.history.pushState({ page: 'results' }, 'Results');
         }
 
@@ -5275,6 +5304,7 @@
             slider.classList.remove('showing-results');
             document.getElementById('homeHeader')?.classList.remove('home-hidden');
             document.getElementById('resultsHeader')?.classList.remove('visible');
+            syncHeaderStackHeight(false);
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';

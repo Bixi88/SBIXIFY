@@ -675,7 +675,10 @@
         .settings-playlist-remove:active { color: var(--text-main); transform: scale(0.9); }
 
         /* ================= HEADER: home (menu + titolo + pillola ricerca) ================= */
-        .home-header { padding: 4px 6px 0; }
+        .header-stack { display:grid; }
+        .header-stack > .home-header, .header-stack > .results-header { grid-area: 1 / 1; }
+        .home-header { padding: 4px 6px 0; opacity:1; pointer-events:auto; transition: opacity 0.2s ease; }
+        .home-header.home-hidden { opacity:0; pointer-events:none; }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
         .menu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; flex:0 0 auto; }
         .menu-bars { width:18px; height:13px; display:flex; flex-direction:column; justify-content:space-between; }
@@ -710,8 +713,10 @@
         }
 
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
-        .results-header { display:none; align-items:center; gap:14px; padding:6px 8px 0; height:40px; }
-        .results-header.visible { display:flex; }
+        /* Sempre in flusso (mai display:none) così la grid dell'header-stack la conta
+           sempre per calcolare l'altezza: cambia solo l'opacity, mai il layout. */
+        .results-header { display:flex; align-items:center; gap:14px; padding:6px 8px 0; height:40px; opacity:0; pointer-events:none; transition: opacity 0.2s ease; }
+        .results-header.visible { opacity:1; pointer-events:auto; }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
         .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
@@ -1391,6 +1396,11 @@
     </div>
 
     <header class="shrink-0 z-40 relative">
+        <!-- I due header (home e risultati) sono impilati nella stessa cella di una grid:
+             così l'altezza dell'header è sempre quella del più alto dei due (home, per via
+             della pillola di ricerca) e passare dall'uno all'altro non fa mai ridimensionare
+             <main> di scatto (mostra/nascondi ora è solo opacity, mai display:none). -->
+        <div class="header-stack">
         <!-- HEADER HOME: menu impostazioni + titolo + pillola di ricerca -->
         <div class="home-header" id="homeHeader">
             <div class="home-header-row">
@@ -1468,6 +1478,7 @@
             <button id="refreshPlaylistBtn" class="hidden refresh-btn" title="Aggiorna playlist (ricarica da Spotify, salta la cache)">
                 <i class="fa-solid fa-rotate"></i>
             </button>
+        </div>
         </div>
 
         <button id="pwaInstallBtn" class="hidden absolute top-2 right-2 text-[#1a1305] font-bold text-[10px] px-3 py-1.5 rounded-full active:scale-95 transition-transform custom-bg-accent z-50">
@@ -5241,31 +5252,10 @@
         }
 
         // --- NAVIGAZIONE ANIMATA TRA VISTA PLAYLIST E VISTA LISTA CANZONI ---
-        // L'header "home" (menu + titolo + pillola ricerca) e l'header "risultati"
-        // (freccia indietro + titolo) hanno altezze diverse (~100px vs ~46px). Scambiarli
-        // ISTANTANEAMENTE mentre #viewsSlider sta ancora scorrendo orizzontalmente (0.5s,
-        // vedi transition qui sopra) fa ridimensionare <main> di scatto A META' ANIMAZIONE:
-        // il contenuto che sta scivolando (artwork dei recenti, titoli) sembra "saltare"
-        // verticalmente proprio mentre la vista esce/entra. Per questo aspettiamo la fine
-        // dello slide (transitionend, con un fallback a timer) prima di cambiare header.
-        function swapHeadersAfterSlide(showingResults) {
-            const slider = document.getElementById('viewsSlider');
-            if (!slider) return;
-            let done = false;
-            const apply = () => {
-                if (done) return;
-                done = true;
-                document.getElementById('homeHeader')?.classList.toggle('hidden', showingResults);
-                document.getElementById('resultsHeader')?.classList.toggle('visible', showingResults);
-            };
-            slider.addEventListener('transitionend', function onEnd(e) {
-                if (e.target !== slider || e.propertyName !== 'transform') return;
-                slider.removeEventListener('transitionend', onEnd);
-                apply();
-            });
-            setTimeout(apply, 550); // fallback di sicurezza se transitionend non scatta
-        }
-
+        // I due header sono impilati in CSS grid (vedi .header-stack): scambiarli è solo un
+        // cambio di opacity, MAI di layout/altezza, quindi può avvenire subito, in sincrono
+        // con lo slide di #viewsSlider, senza più causare salti di contenuto né restare
+        // "congelato" sul vecchio header mentre il contenuto è già cambiato.
         function showResultsView(title) {
             const slider = document.getElementById('viewsSlider');
             if (title) {
@@ -5274,7 +5264,8 @@
             }
             if (!slider || slider.classList.contains('showing-results')) return;
             slider.classList.add('showing-results');
-            swapHeadersAfterSlide(true);
+            document.getElementById('homeHeader')?.classList.add('home-hidden');
+            document.getElementById('resultsHeader')?.classList.add('visible');
             window.history.pushState({ page: 'results' }, 'Results');
         }
 
@@ -5282,7 +5273,8 @@
             const slider = document.getElementById('viewsSlider');
             if (!slider) return;
             slider.classList.remove('showing-results');
-            swapHeadersAfterSlide(false);
+            document.getElementById('homeHeader')?.classList.remove('home-hidden');
+            document.getElementById('resultsHeader')?.classList.remove('visible');
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';

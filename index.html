@@ -1398,7 +1398,7 @@
                     <span class="menu-bars"><span></span><span></span></span>
                     <span id="apiErrorBadge" class="error-badge hidden" title="Servizio di ricerca non disponibile"></span>
                 </button>
-                <h1 class="app-title display">SBIXIFY</h1>
+                <h1 class="app-title display">SBIXI<span class="custom-text-accent">FY</span></h1>
                 <button id="appUpdateBtn" class="hidden update-btn" title="Aggiorna App">
                     <i class="fa-solid fa-arrows-rotate text-sm"></i>
                     <span class="update-dot"></span>
@@ -1480,7 +1480,7 @@
         <section class="flex-1 flex flex-col overflow-hidden h-full relative">
             <div id="viewsSlider" class="flex h-full">
                 <!-- VISTA 1: Home (Recenti) -->
-                <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0 pb-36">
+                <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0 pb-28">
                     <div class="quick-eyebrow">Playlist</div>
                     <div id="recentGrid" class="quick-grid hidden"></div>
                     <div id="recentTracksSection" class="hidden">
@@ -1495,7 +1495,7 @@
                 <!-- VISTA 2: Lista Canzoni (risultati ricerca / playlist aperta) -->
                 <div id="resultsView" class="shrink-0 h-full overflow-y-auto pr-0">
                     <p id="resultsStatusText" class="hidden text-xs p-8 italic text-center mt-12 custom-text-muted"></p>
-                    <div id="trackList" class="pb-36 px-6 pt-4"></div>
+                    <div id="trackList" class="pb-28 px-6 pt-4"></div>
                 </div>
             </div>
         </section>
@@ -5241,6 +5241,31 @@
         }
 
         // --- NAVIGAZIONE ANIMATA TRA VISTA PLAYLIST E VISTA LISTA CANZONI ---
+        // L'header "home" (menu + titolo + pillola ricerca) e l'header "risultati"
+        // (freccia indietro + titolo) hanno altezze diverse (~100px vs ~46px). Scambiarli
+        // ISTANTANEAMENTE mentre #viewsSlider sta ancora scorrendo orizzontalmente (0.5s,
+        // vedi transition qui sopra) fa ridimensionare <main> di scatto A META' ANIMAZIONE:
+        // il contenuto che sta scivolando (artwork dei recenti, titoli) sembra "saltare"
+        // verticalmente proprio mentre la vista esce/entra. Per questo aspettiamo la fine
+        // dello slide (transitionend, con un fallback a timer) prima di cambiare header.
+        function swapHeadersAfterSlide(showingResults) {
+            const slider = document.getElementById('viewsSlider');
+            if (!slider) return;
+            let done = false;
+            const apply = () => {
+                if (done) return;
+                done = true;
+                document.getElementById('homeHeader')?.classList.toggle('hidden', showingResults);
+                document.getElementById('resultsHeader')?.classList.toggle('visible', showingResults);
+            };
+            slider.addEventListener('transitionend', function onEnd(e) {
+                if (e.target !== slider || e.propertyName !== 'transform') return;
+                slider.removeEventListener('transitionend', onEnd);
+                apply();
+            });
+            setTimeout(apply, 550); // fallback di sicurezza se transitionend non scatta
+        }
+
         function showResultsView(title) {
             const slider = document.getElementById('viewsSlider');
             if (title) {
@@ -5249,8 +5274,7 @@
             }
             if (!slider || slider.classList.contains('showing-results')) return;
             slider.classList.add('showing-results');
-            document.getElementById('homeHeader')?.classList.add('hidden');
-            document.getElementById('resultsHeader')?.classList.add('visible');
+            swapHeadersAfterSlide(true);
             window.history.pushState({ page: 'results' }, 'Results');
         }
 
@@ -5258,8 +5282,7 @@
             const slider = document.getElementById('viewsSlider');
             if (!slider) return;
             slider.classList.remove('showing-results');
-            document.getElementById('homeHeader')?.classList.remove('hidden');
-            document.getElementById('resultsHeader')?.classList.remove('visible');
+            swapHeadersAfterSlide(false);
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';

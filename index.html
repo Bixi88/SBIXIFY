@@ -569,15 +569,6 @@
         }
 
 
-        /* --- STILI FILTRI CUSTOM DI RICERCA --- */
-        .filter-option {
-            transition: background-color 0.2s ease, color 0.2s ease;
-        }
-        .filter-option.selected {
-            background: var(--accent) !important;
-            color: #1a1305 !important;
-        }
-
         #miniPlayer, #miniPlayer *, #swipeTitleContainer, #swipeTitleContainer * {
             -webkit-user-drag: none;
             user-drag: none;
@@ -676,12 +667,12 @@
 
         /* ================= HEADER: home (menu + titolo + pillola ricerca) ================= */
         /* home-header e results-header sono impilati uno sopra l'altro (position:absolute)
-           dentro questo contenitore, che ha un'altezza esplicita in px calcolata via JS
-           (vedi syncHeaderStackHeight) e animata in transizione, in sincrono con lo slide
-           di #viewsSlider: così l'header si RESTRINGE/ALLARGA morbidamente passando da uno
-           stato all'altro invece di saltare di scatto O restare sempre alla dimensione
-           massima (che lasciava un vuoto sotto "freccia + titolo" in vista risultati). */
-        .header-stack { position:relative; overflow:hidden; transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+           dentro questo contenitore. L'altezza NON è più animata: viene fissata al massimo tra le due altezze naturali
+           (vedi syncHeaderStackHeight) così il passaggio home<->risultati resta sempre e solo
+           orizzontale (lo slide di #viewsSlider), senza alcuna componente verticale che
+           produceva l'effetto "in diagonale". È normale che la lista risultati, se il suo
+           header è più basso di quello home, parta leggermente più in alto: nessun problema. */
+        .header-stack { position:relative; overflow:hidden; }
         .header-stack > .home-header, .header-stack > .results-header { position:absolute; top:0; left:0; right:0; }
         .home-header { padding: 4px 6px 0; opacity:1; pointer-events:auto; transition: opacity 0.2s ease; }
         .home-header.home-hidden { opacity:0; pointer-events:none; }
@@ -703,24 +694,9 @@
         #searchInput::-webkit-search-results-button,
         #searchInput::-webkit-search-results-decoration { display:none; -webkit-appearance:none; }
         #searchInput::placeholder { color:#8b8794; }
-        .search-pill .filter-btn { color:#4a4550; font-size:15px; flex:0 0 auto; display:flex; align-items:center; padding:2px; width:auto !important; opacity:1 !important; background:none !important; }
-        .search-pill .filter-btn.active { color:#B8791F; }
-
-        .filter-drop {
-            background:var(--bg-card); border-radius:18px; border:1px solid var(--hair, rgba(243,239,230,0.08));
-            max-height:0; opacity:0; overflow:hidden; margin-top:0; padding:0 14px;
-            pointer-events:none;
-            transition: max-height 0.38s cubic-bezier(0.16,1,0.3,1), opacity 0.28s ease,
-                        margin-top 0.38s cubic-bezier(0.16,1,0.3,1),
-                        padding 0.38s cubic-bezier(0.16,1,0.3,1);
-        }
-        .filter-drop.open {
-            max-height:240px; opacity:1; margin-top:10px; padding:14px; pointer-events:auto;
-        }
-
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Sempre in flusso (mai display:none) così se ne può sempre misurare l'altezza
-           naturale via JS (scrollHeight) per animare .header-stack. */
+           naturale via JS (scrollHeight) per calcolare l'altezza fissa di .header-stack. */
         .results-header { display:flex; align-items:center; gap:14px; padding:6px 8px 0; height:40px; opacity:0; pointer-events:none; transition: opacity 0.2s ease; }
         .results-header.visible { opacity:1; pointer-events:auto; }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
@@ -868,12 +844,9 @@
         }
         html.walkman .search-pill #searchInput { color: var(--text-main) !important; }
         html.walkman .search-pill #searchInput::placeholder { color: var(--text-muted); }
-        html.walkman .search-pill .mag-btn,
-        html.walkman .search-pill .filter-btn { color: var(--text-main) !important; }
-        html.walkman .search-pill .filter-btn.active { color: var(--accent) !important; }
+        html.walkman .search-pill .mag-btn { color: var(--text-main) !important; }
         html.walkman .glass-panel,
-        html.walkman .settings-sheet,
-        html.walkman .filter-drop {
+        html.walkman .settings-sheet {
             border: 1px solid rgba(240,240,242,0.14);
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
@@ -943,6 +916,9 @@
            il viola compare solo qui e sulla barra del minutaggio, come richiesto. */
         html.walkman { --walkman-highlight: #B392F5; }
         html.walkman .track-row.playing .custom-text-accent { color: var(--walkman-highlight) !important; }
+        /* Logo "SBIXIFY": le lettere "FY" prendono lo stesso viola chiaro dell'highlight
+           invece dell'argento di --accent, che qui sarebbe poco distintivo. */
+        html.walkman .app-title .custom-text-accent { color: var(--walkman-highlight) !important; }
 
         /* ---- Barra del minutaggio (miniplayer + now playing sheet), stesso viola ---- */
         html.walkman #progressBar,
@@ -1065,12 +1041,14 @@
            Non tocco --accent (resta il viola di pulsanti/progress bar), il nuovo colore compare
            solo qui dove il viola perdeva leggibilità sullo sfondo blu-teal. */
         html.frosted .track-row.playing .custom-text-accent { color: var(--frosted-highlight) !important; }
+        /* Logo "SBIXIFY": le lettere "FY" usano il viola chiaro dell'highlight invece del
+           viola più scuro di --accent, per restare leggibili e coerenti con lo stile. */
+        html.frosted .app-title .custom-text-accent { color: var(--frosted-highlight) !important; }
 
         /* Pannelli in vetro satinato: più saturazione/blur e bordo luminoso, per
            accentuare l'effetto "frosted" rispetto al blur standard delle altre skin. */
         html.frosted .glass-panel,
         html.frosted .settings-sheet,
-        html.frosted .filter-drop,
         html.frosted .custom-bg-card {
             backdrop-filter: blur(26px) saturate(150%);
             -webkit-backdrop-filter: blur(26px) saturate(150%);
@@ -1107,15 +1085,9 @@
 
         /* ---- Pillola di ricerca: resta bianca (come da richiesta), ma icone/testo
            passano dal grigio caldo neutro di "Moderna" (pensato per quella palette)
-           a un blu-ardesia scuro coerente con l'identità Frosted; lo stato attivo del
-           filtro usa --accent (viola scuro, già il colore-firma di questa skin) al
-           posto dell'ambra ereditato da Moderna, che qui non c'entrava nulla. */
-        html.frosted .search-pill .mag-btn,
-        html.frosted .search-pill .filter-btn {
+           a un blu-ardesia scuro coerente con l'identità Frosted. */
+        html.frosted .search-pill .mag-btn {
             color: #3E5A75 !important;
-        }
-        html.frosted .search-pill .filter-btn.active {
-            color: var(--accent) !important;
         }
         html.frosted #searchInput {
             color: #22364A !important;
@@ -1428,50 +1400,6 @@
                 <input type="search" id="searchInput" placeholder="Cosa vuoi ascoltare oggi?"
                     autocomplete="off" autocorrect="off" spellcheck="false"
                     data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
-                <button id="filterToggleBtn" class="filter-btn" title="Filtri">
-                    <i class="fa-solid fa-filter"></i>
-                </button>
-            </div>
-
-            <!-- Pannello Filtri YouTube -->
-            <div id="filterMenu" class="filter-drop">
-                <div class="grid grid-cols-2 gap-4">
-                    <!-- Colonna Data di Caricamento -->
-                    <div class="relative">
-                        <label class="block text-[10px] font-bold uppercase tracking-wider mb-1.5 custom-text-muted">Data di Caricamento</label>
-                        <div class="filter-select-wrapper relative" id="filterDateWrapper">
-                            <div id="filterDateTrigger" class="flex items-center justify-between text-xs px-3.5 py-3 rounded-xl bg-white/5 border border-white/5 text-white cursor-pointer select-none">
-                                <span id="filterDateValue">Qualsiasi data</span>
-                                <i class="fa-solid fa-chevron-down text-[10px] text-neutral-400"></i>
-                            </div>
-                            <div id="filterDateOptions" class="hidden absolute top-[105%] left-0 right-0 rounded-xl bg-[#121212] border border-white/10 shadow-2xl z-50 overflow-hidden">
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5 selected font-bold" data-value="any">Qualsiasi data</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="hour">Ultima ora</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="today">Oggi</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="week">Questa settimana</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="month">Questo mese</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="year">Quest'anno</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Colonna Durata -->
-                    <div class="relative">
-                        <label class="block text-[10px] font-bold uppercase tracking-wider mb-1.5 custom-text-muted">Durata Brano</label>
-                        <div class="filter-select-wrapper relative" id="filterDurationWrapper">
-                            <div id="filterDurationTrigger" class="flex items-center justify-between text-xs px-3.5 py-3 rounded-xl bg-white/5 border border-white/5 text-white cursor-pointer select-none">
-                                <span id="filterDurationValue">Qualsiasi durata</span>
-                                <i class="fa-solid fa-chevron-down text-[10px] text-neutral-400"></i>
-                            </div>
-                            <div id="filterDurationOptions" class="hidden absolute top-[105%] left-0 right-0 rounded-xl bg-[#121212] border border-white/10 shadow-2xl z-50 overflow-hidden">
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5 selected font-bold" data-value="any">Qualsiasi durata</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="short">Breve (&lt; 4 min)</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="medium">Media (4 - 20 min)</div>
-                                <div class="filter-option px-4 py-2.5 text-xs text-white cursor-pointer hover:bg-white/5" data-value="long">Lunga (&gt; 20 min)</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -1908,8 +1836,6 @@
         const searchContainer = document.getElementById('searchContainer');
         const searchInput = document.getElementById('searchInput');
         const searchTriggerBtn = document.getElementById('searchTriggerBtn');
-        const filterToggleBtn = document.getElementById('filterToggleBtn');
-        const filterMenu = document.getElementById('filterMenu');
 
         const swipeTitle = document.getElementById('swipeTitleContainer');
         const marqueeContent = document.getElementById('marqueeContent');
@@ -2218,7 +2144,6 @@
         let exitOnBackArmedTimeout = null;
 
         document.addEventListener('DOMContentLoaded', () => {
-            setupFilterDropdowns();
             renderRecentHome();
             renderRecentTracksHome();
             restoreLastPlayback();
@@ -2254,10 +2179,6 @@
                 if (!handled && nowPlayingSheet.classList.contains('expanded')) {
                     nowPlayingSheet.classList.remove('expanded');
                     nowPlayingSheet.style.transform = '';
-                    handled = true;
-                }
-                if (filterMenu && filterMenu.classList.contains('open')) {
-                    filterMenu.classList.remove('open');
                     handled = true;
                 }
                 const apiModal = document.getElementById('apiModal');
@@ -2348,35 +2269,18 @@
                 } 
             });
 
-            document.addEventListener('click', (e) => {
-                if (!searchContainer.contains(e.target) && !filterMenu.contains(e.target)) {
-                    closeSearch();
-                }
-            });
-
-            function closeSearch() {
-                filterMenu.classList.remove('open');
-            }
-
             // La stessa barra di ricerca serve sia per cercare su YouTube (testo libero)
             // sia per importare una playlist Spotify (se viene incollato un link/URI playlist).
             function handleSearchSubmit() {
                 const value = searchInput.value.trim();
-                if (!value) { closeSearch(); return; }
+                if (!value) { return; }
                 if (isSpotifyPlaylistLink(value)) {
                     importSpotifyPlaylist(value);
                     searchInput.value = '';
-                    closeSearch();
                 } else {
                     performSearch(false);
                 }
             }
-
-            // Click sul pulsante Filtri YouTube (interno alla barra)
-            filterToggleBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                filterMenu.classList.toggle('open');
-            });
 
             miniPlayer.addEventListener('click', (e) => {
                 if (e.target.closest('#miniPlayerControls') || e.target.closest('#miniProgressBarArea')) {
@@ -2999,57 +2903,6 @@
             window.addEventListener('mouseup', onEnd);
         }
 
-
-        function setupFilterDropdowns() {
-            const dateTrigger = document.getElementById('filterDateTrigger');
-            const dateOptions = document.getElementById('filterDateOptions');
-            const dateValue = document.getElementById('filterDateValue');
-
-            const durationTrigger = document.getElementById('filterDurationTrigger');
-            const durationOptions = document.getElementById('filterDurationOptions');
-            const durationValue = document.getElementById('filterDurationValue');
-
-            dateTrigger.addEventListener('click', (e) => {
-                e.stopPropagation();
-                durationOptions.classList.add('hidden');
-                dateOptions.classList.toggle('hidden');
-            });
-
-            durationTrigger.addEventListener('click', (e) => {
-                e.stopPropagation();
-                dateOptions.classList.add('hidden');
-                durationOptions.classList.toggle('hidden');
-            });
-
-            document.querySelectorAll('#filterDateOptions .filter-option').forEach(opt => {
-                opt.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    document.querySelectorAll('#filterDateOptions .filter-option').forEach(el => el.classList.remove('selected', 'font-bold'));
-                    opt.classList.add('selected', 'font-bold');
-                    dateValue.textContent = opt.textContent;
-                    appState.filterDate = opt.dataset.value;
-                    dateOptions.classList.add('hidden');
-                    performSearch(false);
-                });
-            });
-
-            document.querySelectorAll('#filterDurationOptions .filter-option').forEach(opt => {
-                opt.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    document.querySelectorAll('#filterDurationOptions .filter-option').forEach(el => el.classList.remove('selected', 'font-bold'));
-                    opt.classList.add('selected', 'font-bold');
-                    durationValue.textContent = opt.textContent;
-                    appState.filterDuration = opt.dataset.value;
-                    durationOptions.classList.add('hidden');
-                    performSearch(false);
-                });
-            });
-
-            document.addEventListener('click', () => {
-                dateOptions.classList.add('hidden');
-                durationOptions.classList.add('hidden');
-            });
-        }
 
         // Swipe orizzontale sul menu impostazioni: trascinando verso sinistra la sheet segue
         // il dito in tempo reale (stessa direzione con cui è entrata) e si chiude oltre una
@@ -5259,30 +5112,27 @@
 
         // --- NAVIGAZIONE ANIMATA TRA VISTA PLAYLIST E VISTA LISTA CANZONI ---
         // I due header sono impilati uno sopra l'altro (position:absolute) dentro
-        // #headerStack, la cui altezza in px viene impostata qui e transita in modo
-        // fluido (CSS transition su .header-stack), in sincrono con lo slide di
-        // #viewsSlider: niente più salti di scatto né vuoti sotto l'header risultati.
+        // #headerStack. La sua altezza NON viene più animata: resta sempre fissa al
+        // massimo tra le due altezze naturali (home/risultati), calcolata qui e
+        // ricalcolata solo se il contenuto cambia (es. resize). In questo modo lo
+        // swipe/slide tra home e risultati è SEMPRE e SOLO orizzontale (nessuna
+        // componente verticale che dava l'effetto "in diagonale"): è normale ed
+        // accettato che la lista canzoni, se il suo header è più basso, parta un
+        // filo più in alto rispetto a prima.
         const headerStackEl = document.querySelector('.header-stack');
-        function syncHeaderStackHeight(showingResults) {
+        function syncHeaderStackHeight() {
             if (!headerStackEl) return;
-            const target = showingResults
-                ? document.getElementById('resultsHeader')
-                : document.getElementById('homeHeader');
-            if (target) headerStackEl.style.height = target.scrollHeight + 'px';
+            const homeH = document.getElementById('homeHeader')?.scrollHeight || 0;
+            const resultsH = document.getElementById('resultsHeader')?.scrollHeight || 0;
+            headerStackEl.style.height = Math.max(homeH, resultsH) + 'px';
         }
-        // Mentre siamo in home, il pannello filtri può aprirsi/chiudersi e cambiare
-        // l'altezza naturale dell'header: la teniamo sincronizzata in automatico.
+        // Ricalcola se cambia l'altezza naturale dell'header home (es. rotazione schermo).
         (function watchHomeHeaderHeight() {
             const homeHeaderEl = document.getElementById('homeHeader');
-            const slider = document.getElementById('viewsSlider');
             if (!homeHeaderEl || !window.ResizeObserver) return;
-            new ResizeObserver(() => {
-                if (slider && !slider.classList.contains('showing-results')) {
-                    syncHeaderStackHeight(false);
-                }
-            }).observe(homeHeaderEl);
+            new ResizeObserver(() => syncHeaderStackHeight()).observe(homeHeaderEl);
         })();
-        syncHeaderStackHeight(false); // stato iniziale: si parte sempre in home
+        syncHeaderStackHeight(); // stato iniziale
 
         function showResultsView(title) {
             const slider = document.getElementById('viewsSlider');
@@ -5294,7 +5144,6 @@
             slider.classList.add('showing-results');
             document.getElementById('homeHeader')?.classList.add('home-hidden');
             document.getElementById('resultsHeader')?.classList.add('visible');
-            syncHeaderStackHeight(true);
             window.history.pushState({ page: 'results' }, 'Results');
         }
 
@@ -5304,7 +5153,6 @@
             slider.classList.remove('showing-results');
             document.getElementById('homeHeader')?.classList.remove('home-hidden');
             document.getElementById('resultsHeader')?.classList.remove('visible');
-            syncHeaderStackHeight(false);
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';

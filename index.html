@@ -1037,25 +1037,27 @@
            1) In alto, un velo scuro che si dissolve rapidamente (0-20%): serve solo a
               rendere leggibili "In riproduzione"/nome playlist sopra copertine chiare o
               molto dettagliate, senza scurire visibilmente il resto dell'artwork sotto.
-           2) Verso il basso, una transizione lunga, morbida e "pesante" (dal 30% fino al
-              90%, cioè 60 punti di schermo) verso il colore dominante: parte già visibile
-              a poco più di un quarto dell'artwork e cresce con una curva a più tappe
-              (25% → 55% → 80% → pieno) invece di un semplice lineare, così il colore
-              "prende il sopravvento" con lo stesso peso ed eleganza della reference,
-              arrivando quasi a lambire il titolo del brano pur restando tutto leggibile. */
+           2) Verso il basso, una copertura lunga e pesante (dal 30% al 72%, cioè lungo
+              tutta la parte restante dell'artwork) che scurisce progressivamente prima di
+              rivelare il colore dominante pieno esattamente dove finisce l'immagine (72%),
+              così non c'è alcuna cucitura visibile col colore sottostante. Nota: niente
+              color-mix() qui apposta - alcuni WebView Android non lo supportano, e se una
+              singola funzione della dichiarazione "background" non è valida il browser
+              scarta l'intera regola (motivo per cui la sfumatura precedente non appariva
+              affatto). Solo rgba() e var() dirette, che degradano sempre in sicurezza. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
                 rgba(0,0,0,0.6) 0%,
-                rgba(0,0,0,0.22) 10%,
+                rgba(0,0,0,0.2) 10%,
                 rgba(0,0,0,0) 20%,
                 rgba(0,0,0,0) 30%,
-                color-mix(in srgb, var(--immersive-color) 25%, transparent) 46%,
-                color-mix(in srgb, var(--immersive-color) 55%, transparent) 62%,
-                color-mix(in srgb, var(--immersive-color) 82%, transparent) 78%,
-                var(--immersive-color) 90%,
+                rgba(0,0,0,0.25) 42%,
+                rgba(0,0,0,0.5) 54%,
+                rgba(0,0,0,0.78) 66%,
+                var(--immersive-color) 72%,
                 var(--immersive-color) 100%);
             transition: opacity 0.25s ease;
         }

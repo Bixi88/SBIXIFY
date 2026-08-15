@@ -669,8 +669,16 @@
            bordo della vista (che ha overflow-y: auto e quindi, per la nota regola CSS,
            taglierebbe anche in orizzontale qualunque sfondo provi a "sforare" i suoi bordi). */
         .home-header {
-            position: sticky; top: 0; z-index: 20;
+            position: sticky; top: 0; z-index: 25;
             padding: 4px 6px 0;
+            /* Forza un proprio layer di compositing: su alcuni WebView Android (es. Brave
+               come PWA) un discendente "sticky" con z-index più alto di un fratello
+               "fixed" con z-index più basso a volte veniva comunque dipinto SOTTO quel
+               fratello nonostante lo z-index lo garantisca da spec (bug di ordinamento
+               tra layer compositati). Promuovendo esplicitamente l'header al proprio
+               layer con transform, il browser rispetta l'ordine z-index anche tra layer
+               diversi, tenendo menu/pillola sempre sopra il velo nero fisso dietro. */
+            transform: translateZ(0);
         }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
         .menu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; flex:0 0 auto; }
@@ -695,9 +703,14 @@
            in cima, altezza sempre naturale e compatta. Nessuno sfondo pieno: trasparente,
            il colore/dissolvenza arriva dal layer fixed #resultsHeaderBgFixed qui sotto. */
         .results-header {
-            position: sticky; top: 0; z-index: 20;
+            position: sticky; top: 0; z-index: 25;
             display:flex; align-items:center; gap:14px;
             padding:10px 8px 6px; height:40px;
+            /* Stesso motivo del .home-header qui sopra: promuove l'header al proprio
+               layer di compositing per garantire che resti sempre sopra il velo nero
+               fisso dietro, indipendentemente dai bug di ordinamento tra layer di
+               alcuni WebView Android. */
+            transform: translateZ(0);
         }
 
         /* ================= LAYER DI SFONDO FISSO (bordo a bordo) DIETRO GLI HEADER =================
@@ -709,11 +722,17 @@
            così il contenuto che scorre sotto sfuma invece di sovrapporsi o tagliarsi di netto.
            z-index sotto l'header (che resta a 20, sempre sopra) ma sopra la lista che scorre. */
         #homeHeaderBgFixed, #resultsHeaderBgFixed {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 15;
+            position: fixed; top: 0; left: 0; right: 0; z-index: 5;
             pointer-events: none;
             background: linear-gradient(to bottom, var(--bg-main) 0%, var(--bg-main) 62%, transparent 100%);
         }
-        #homeHeaderBgFixed { height: 150px; }
+        /* La pillola di ricerca (menu 40px + margin-top 12px + pillola ~40px, dopo il
+           padding-top 4px dell'header) finisce intorno a 96px dalla cima: il nero pieno
+           deve arrivare fino a lì (con un margine) prima di iniziare a sfumare, altrimenti
+           le playlist che scorrono sotto si vedono trasparire proprio dietro la pillola.
+           Nero pieno fino al 78% (≈163px su 210) poi sfuma nei restanti 47px, ben sotto
+           il bordo inferiore della pillola. */
+        #homeHeaderBgFixed { height: 210px; background: linear-gradient(to bottom, var(--bg-main) 0%, var(--bg-main) 78%, transparent 100%); }
         #resultsHeaderBgFixed { height: 100px; display: none; }
         /* #viewsSlider guadagna/perde "showing-results" quando si passa da home a playlist
            (stesso meccanismo già usato per la transizione orizzontale): lo riusiamo per

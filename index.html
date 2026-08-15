@@ -864,11 +864,10 @@
         html.walkman #miniPlayerImgFrame {
             border-radius: 50% !important;
             box-shadow: none;
-            /* Opacità alzata da 0.55 a 0.85 rispetto alle altre cornici circolari:
-               su copertine chiare (foto luminose, cieli, paesaggi) un bordo bianco
-               semitrasparente al 55% si confondeva quasi del tutto con lo sfondo
-               dell'immagine, rendendo lo spessore di 6px poco percepibile. */
-            border: 6px solid rgba(255,255,255,0.85);
+            /* Bianco pieno (non più semitrasparente, che sulla mescolanza con lo sfondo
+               nero risultava grigiastro) e spessore aumentato da 6px a 8px per massima
+               visibilità anche su copertine chiare. */
+            border: 8px solid #FFFFFF;
         }
         /* Cornice bianca "a vetro": sul grande artwork della Now Playing sheet è
            leggermente più spessa, coerente col trattamento delle altre artwork. */

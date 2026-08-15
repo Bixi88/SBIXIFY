@@ -9,7 +9,7 @@
             var savedTheme = localStorage.getItem('sbixify_theme');
             // Il tema Amoled è stato rimosso: chi lo aveva impostato torna a "Moderna".
             if (savedTheme === 'amoled') savedTheme = 'moderna';
-            if (savedTheme === 'walkman' || savedTheme === 'frosted') {
+            if (savedTheme === 'walkman') {
                 document.documentElement.classList.add(savedTheme);
             }
         } catch (e) {}
@@ -81,9 +81,6 @@
             if (savedTheme === 'walkman') {
                 document.getElementById('metaThemeColor')?.setAttribute('content', '#000000');
                 document.getElementById('metaThemeColorDark')?.setAttribute('content', '#000000');
-            } else if (savedTheme === 'frosted') {
-                document.getElementById('metaThemeColor')?.setAttribute('content', '#0A2F5C');
-                document.getElementById('metaThemeColorDark')?.setAttribute('content', '#0A2F5C');
             }
         } catch (e) {}
     </script>
@@ -612,8 +609,8 @@
         /* Tema Moderna (nessuna classe html dedicata, è il default): il menu impostazioni
            usa .glass-panel come tutti gli altri overlay, quindi di base è semitrasparente/
            sfocato. Qui lo rendiamo pieno con lo stesso colore solido --bg-main già usato
-           per il bottom sheet del timer, senza toccare Walkman/Frosted che restano com'erano. */
-        html:not(.walkman):not(.frosted) #apiModal .settings-sheet {
+           per il bottom sheet del timer, senza toccare Walkman che resta com'era. */
+        html:not(.walkman) #apiModal .settings-sheet {
             background: var(--bg-main);
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
@@ -749,19 +746,18 @@
             75% { transform: rotate(2deg); }
         }
         /* Cornice grigia per tutte le artwork del tema Moderna (quello di base, senza skin
-           Walkman/Frosted attiva): stesso trattamento della skin Frosted (bordo su card
-           Recenti, playlist recenti in Impostazioni, miniplayer, now playing e sul
-           CONTENITORE della thumbnail nella lista canzoni), ma nel grigio di questo tema
-           (--text-muted) invece del bianco/lavanda delle altre skin. */
-        html:not(.walkman):not(.frosted) .qcard .circle,
-        html:not(.walkman):not(.frosted) .settings-playlist-thumb,
-        html:not(.walkman):not(.frosted) #miniPlayerImgFrame {
+           Walkman attiva): bordo su card Recenti, playlist recenti in Impostazioni,
+           miniplayer, now playing e sul CONTENITORE della thumbnail nella lista canzoni,
+           nel grigio di questo tema (--text-muted) invece del bianco/lavanda di Walkman. */
+        html:not(.walkman) .qcard .circle,
+        html:not(.walkman) .settings-playlist-thumb,
+        html:not(.walkman) #miniPlayerImgFrame {
             border: 2.5px solid rgba(139, 135, 148, 0.55);
         }
-        html:not(.walkman):not(.frosted) #sheetArtworkFrame {
+        html:not(.walkman) #sheetArtworkFrame {
             border: 4px solid rgba(139, 135, 148, 0.5);
         }
-        html:not(.walkman):not(.frosted) .track-thumb-wrap {
+        html:not(.walkman) .track-thumb-wrap {
             background-color: rgba(139, 135, 148, 0.16);
             border: 2.5px solid rgba(139, 135, 148, 0.55);
         }
@@ -802,8 +798,8 @@
             box-shadow: none;
             border: 2.5px solid rgba(255,255,255,0.55);
         }
-        /* Cornice bianca "a vetro" come nella skin Frosted: sul grande artwork della Now
-           Playing sheet è leggermente più spessa, coerente col trattamento Frosted. */
+        /* Cornice bianca "a vetro": sul grande artwork della Now Playing sheet è
+           leggermente più spessa, coerente col trattamento delle altre artwork. */
         html.walkman #sheetArtworkFrame {
             border-radius: 50% !important;
             border: 4px solid rgba(255,255,255,0.5);
@@ -812,8 +808,8 @@
         /* Il contenitore della thumbnail nella lista canzoni ha un suo squircle (rounded-[24%])
            che "inquadra" l'immagine: va reso cerchio anche lui, altrimenti resta visibile
            dietro al cerchio dell'immagine. Bordo spostato sul CONTENITORE (.track-thumb-wrap)
-           anziché sull'<img>, come nella skin Frosted, così resta pulito qualunque sia lo
-           stato di caricamento della copertina (fallback grigio scuro coperto dal bordo). */
+           anziché sull'<img>, così resta pulito qualunque sia lo stato di caricamento della
+           copertina (fallback grigio scuro coperto dal bordo). */
         html.walkman .track-thumb-wrap {
             border-radius: 50% !important;
             background-color: rgba(240,240,242,0.10);
@@ -940,240 +936,6 @@
            come avanti/indietro (fa-backward-fast/fa-forward-fast), invece del triangolo disegnato
            a mano con mask-image usato in precedenza. Il colore è già impostato dalla regola
            "html.walkman #playPauseBtn i / #miniPlayPauseBtn i" più in alto in questo file. */
-
-        /* ================================================================
-           SKIN "FROSTED GLASS": sfondo blu petrolio/notte, pannelli in vetro
-           satinato, accento viola acceso, artwork tutte rotonde.
-           ================================================================ */
-        html.frosted {
-            --bg-main: #4A5875;
-            --bg-gradient-top: #4F84A0;
-            /* CORREZIONE: la prima versione usava i colori del wallpaper ESTERNO alla
-               foto (quello dietro le tre card del mockup) — un blu-navy scuro e saturo.
-               Ma l'app, quando è aperta, riempie tutto lo schermo: corrisponde quindi
-               all'INTERNO di una card (es. "Now Playing"), non allo sfondo esterno.
-               Ricampionando i pixel dentro la card la gamma è tutta diversa: molto più
-               stretta e tenue (il rosso resta quasi fisso ~79-81, cambia solo il
-               blu/verde), dal grigio-indaco più scuro (~rgb(79,90,123)) a un teal
-               tenue più chiaro (~rgb(80,132,155)) — l'effetto vetro sfocato vero, non
-               macchie di colore acceso. Un unico alone morbido (radial-gradient con
-               stop molto larghi) sopra una base quasi piatta, non due "blob" netti. */
-            /* Scurimento centrale (vignette): come nella foto reference, un velo nero
-               morbido concentrato al centro dello schermo — dove cadono i titoli in
-               bianco della lista — che sfuma a zero prima dei bordi. Va PRIMA degli
-               altri due layer (i layer del background si sovrappongono nell'ordine
-               di dichiarazione, il primo è il più in superficie) così scurisce senza
-               spegnere l'alone teal/indaco sotto. */
-            --bg-gradient:
-                radial-gradient(70% 55% at 50% 46%, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 72%),
-                radial-gradient(95% 75% at 66% 40%, #4F84A0 0%, rgba(79,90,123,0) 78%),
-                linear-gradient(165deg, #4F5A7B 0%, #4A5875 100%);
-            --bg-card: rgba(150, 172, 196, 0.20);
-            --bg-input: rgba(150, 172, 196, 0.14);
-            --accent: #8B2FD9;
-            /* Highlight dedicato per il titolo/badge della traccia in riproduzione (e per
-               il ring del "recente" più in basso): il viola di --accent (usato anche per
-               play/progress bar, #8B2FD9) è troppo scuro/saturo e sparisce contro questo
-               sfondo blu-teal. Resto nella stessa famiglia blu/viola richiesta, ma molto
-               più chiaro e freddo — un indaco-violetto luminoso che si stacca nettamente
-               sia dal teal (#4F84A0) che dall'indaco più cupo dello sfondo. */
-            --frosted-highlight: #A78BFA;
-            --text-main: #F5F7FA;
-            --text-muted: #C7D0DE;
-            /* Tono "vetro frosted" dei pulsanti tondi (avanti/indietro + anello del
-               play/pausa): stesso azzurro-lavanda chiaro campionato dai pixel del
-               pulsante nella foto (~rgb(166,184,197)). Reso QUASI OPACO (non un
-               semplice overlay trasparente al 50%): nella foto l'anello è pulito, non
-               "sporcato" dal colore dello sfondo sotto — serve alta opacità per
-               ottenere lo stesso effetto invece di lasciar trasparire troppo lo sfondo. */
-            --frosted-btn: rgba(196, 210, 222, 0.94);
-        }
-        /* Tutte le artwork diventano cerchi con un bordo chiaro "a vetro" ben visibile:
-           card Recenti in home, playlist recenti nel menu Impostazioni, miniplayer,
-           now playing. Bordo reso più spesso/luminoso (era 2px @ 35%, troppo debole —
-           si perdeva contro lo sfondo scuro). */
-        html.frosted .qcard .circle,
-        html.frosted .settings-playlist-thumb,
-        html.frosted #miniPlayerImgFrame {
-            border-radius: 50% !important;
-            border: 2.5px solid rgba(255,255,255,0.55);
-        }
-        html.frosted #sheetArtworkFrame {
-            border-radius: 50% !important;
-            border: 4px solid rgba(255,255,255,0.5);
-        }
-        html.frosted #sheetArtworkGlow { border-radius: 50% !important; }
-        /* Etichetta "Riproduzione da Playlist: <nome>" nell'header della Now Playing
-           sheet: bianco piatto si perde troppo poco, meglio in tinta con l'accento
-           chiaro del tema (stesso viola usato per l'highlight dei testi). */
-        html.frosted #sheetHeaderPlaylistName { color: var(--frosted-highlight); }
-
-        /* ---- Artwork mini nella lista canzoni: il bordo va sul CONTENITORE (.track-thumb-wrap),
-           non sull'<img> al suo interno. Prima il bordo era sull'immagine mentre il contenitore
-           restava con lo sfondo di fallback grigio scuro (bg-neutral-800 di Tailwind, ~rgb(38,38,38)):
-           quel grigio trapelava sotto il bordo semi-trasparente ed è quel "grigio scuro" segnalato
-           invece del vetro chiaro. Spostando bordo + uno sfondo di fallback chiaro sul contenitore
-           l'anello resta pulito qualunque sia lo stato di caricamento della copertina. */
-        html.frosted .track-thumb-wrap {
-            border-radius: 50% !important;
-            background-color: rgba(190, 208, 228, 0.22);
-            border: 2.5px solid rgba(255,255,255,0.55);
-        }
-        html.frosted .track-thumb-img { border-radius: 50% !important; }
-
-        /* ---- Ring del brano/ricerca più recente ("latest"): usava --accent (viola scuro),
-           stesso problema di contrasto del titolo in riproduzione. Stessa correzione: il nuovo
-           indaco-violetto chiaro al posto del viola cupo. */
-        html.frosted .qcard.latest .circle { box-shadow: 0 0 0 3px var(--frosted-highlight); border-color: transparent; }
-        html.frosted .qcard.latest .name { color: var(--frosted-highlight); }
-        /* La X per rimuovere una card dai "Recenti" (playlist incluse) usa di default
-           background: var(--accent) + colore var(--bg-main): in Frosted --accent è il
-           viola #8B2FD9 e --bg-main è un blu scuro, quindi icona scura su sfondo viola
-           scuro, poco leggibile su questo tema in vetro. Qui sostituiamo con lo stesso
-           trattamento "vetro chiaro" usato per gli altri pulsanti tondi della skin. */
-        html.frosted .qcard .qcard-delete {
-            background: #E8ECF3;
-            color: #2B3448;
-            border: 1px solid rgba(255,255,255,0.5);
-            box-shadow: 0 4px 10px rgba(0,0,0,.35);
-        }
-
-        /* ---- Highlight indaco-violetto nella lista (titolo + badge della traccia in riproduzione) ----
-           Non tocco --accent (resta il viola di pulsanti/progress bar), il nuovo colore compare
-           solo qui dove il viola perdeva leggibilità sullo sfondo blu-teal. */
-        html.frosted .track-row.playing .custom-text-accent { color: var(--frosted-highlight) !important; }
-        /* Logo "SBIXIFY": le lettere "FY" usano il viola chiaro dell'highlight invece del
-           viola più scuro di --accent, per restare leggibili e coerenti con lo stile. */
-        html.frosted .app-title .custom-text-accent { color: var(--frosted-highlight) !important; }
-
-        /* Pannelli in vetro satinato: più saturazione/blur e bordo luminoso, per
-           accentuare l'effetto "frosted" rispetto al blur standard delle altre skin. */
-        html.frosted .glass-panel,
-        html.frosted .settings-sheet,
-        html.frosted .custom-bg-card {
-            backdrop-filter: blur(26px) saturate(150%);
-            -webkit-backdrop-filter: blur(26px) saturate(150%);
-            border-color: rgba(255,255,255,0.28);
-        }
-        /* Il mini player è il pannello più "vetroso" e luminoso di tutti (come nel
-           riferimento): tinta più chiara del resto delle superfici in vetro. */
-        html.frosted #miniPlayer.glass-panel {
-            background: rgba(190, 208, 228, 0.35);
-            border: 1px solid rgba(255,255,255,0.4);
-        }
-        html.frosted .update-btn,
-        html.frosted .results-header .back-btn,
-        html.frosted .results-header .refresh-btn,
-        html.frosted .settings-playlist-remove {
-            background: rgba(255,255,255,0.18);
-            border: 1px solid rgba(255,255,255,0.25);
-        }
-        /* La X per rimuovere una playlist ereditava --text-muted, che su questo vetro
-           satinato (blur+saturate sopra lo sfondo blu/viola Frosted) risultava scura e
-           poco leggibile. Colore esplicito chiaro/bianco e sfondo del pulsante un po'
-           più opaco, per staccarsi nettamente dal vetro dietro. */
-        html.frosted .settings-playlist-remove {
-            color: #F5F7FA;
-            background: rgba(255,255,255,0.28);
-            border: 1px solid rgba(255,255,255,0.38);
-        }
-        html.frosted .settings-playlist-remove:active {
-            color: var(--frosted-highlight);
-        }
-        /* Titolo playlist in cima alla lista canzoni: stesso indaco-violetto chiaro
-           usato per il brano in riproduzione, invece del bianco piatto di default. */
-        html.frosted .results-header .rt { color: var(--frosted-highlight); }
-
-        /* ---- Pillola di ricerca: resta bianca (come da richiesta), ma icone/testo
-           passano dal grigio caldo neutro di "Moderna" (pensato per quella palette)
-           a un blu-ardesia scuro coerente con l'identità Frosted. */
-        html.frosted .search-pill .mag-btn {
-            color: #3E5A75 !important;
-        }
-        html.frosted #searchInput {
-            color: #22364A !important;
-        }
-        html.frosted #searchInput::placeholder {
-            color: #7C90A6 !important;
-        }
-        /* Pulsanti play/pausa: nella foto NON è un viola piatto, ma un gradiente
-           diagonale viola-blu (alto-sinistra, ~rgb(133,46,219)) verso magenta-viola
-           (basso-destra, ~rgb(183,23,206)), racchiuso da un anello "frosted" dello
-           stesso vetro chiaro dei pulsanti avanti/indietro — non uno sfondo pieno
-           col solo bordo dell'icona bianca. Valori presi campionando i pixel reali
-           della foto (non a occhio). */
-        html.frosted #playPauseBtn,
-        html.frosted #miniPlayPauseBtn {
-            background: linear-gradient(135deg, #8534DD 0%, #A621CE 55%, #BE18CC 100%) !important;
-            border: 3px solid var(--frosted-btn);
-            box-shadow: 0 10px 26px -6px rgba(139,47,217,0.55), inset 0 1px 1px rgba(255,255,255,0.35) !important;
-        }
-        html.frosted #playPauseBtn i,
-        html.frosted #miniPlayPauseBtn i {
-            color: #fff !important;
-        }
-        /* Il mini player è molto più piccolo (38px vs 68px): un bordo di 3px come nel
-           pulsante grande risulterebbe sproporzionato, quindi qui più sottile. */
-        html.frosted #miniPlayPauseBtn {
-            border-width: 2px;
-        }
-        /* Avanti/indietro: cerchio in vetro satinato chiaro, colore piatto (stesso
-           tono dell'anello del play/pausa), coerente con la foto di riferimento. */
-        html.frosted #prevBtn, html.frosted #nextBtn {
-            width: 46px; height: 46px; padding: 0; border-radius: 50%;
-            /* Colore piatto (non più radial-gradient con forte rilievo 3D): nella foto
-               il pulsante è quasi uniforme, con al più una variazione di luce minima. */
-            background: var(--frosted-btn);
-            border: 1px solid rgba(255,255,255,0.35);
-            box-shadow: 0 3px 6px -3px rgba(0,0,0,0.25);
-            color: #fff !important;
-            display: flex; align-items: center; justify-content: center; font-size: 15px;
-        }
-        /* Repeat acceso in questo tema: --accent (pensato per il gradiente scuro del
-           play/pausa) è troppo simile al blu-grigio di sfondo. Invece del lilla chiaro
-           usato altrove, qui usiamo un viola più scuro preso dalla parte più scura del
-           gradiente del pulsante play (#8534DD), per un colore meno "acceso" e più
-           coerente col resto dei controlli. L'outline flat resta il bordo dei pulsanti
-           avanti/indietro, coerente con le altre skin. */
-        html.frosted #repeatBtn.active #repeatIcon {
-            color: #8534DD !important;
-            -webkit-text-stroke-color: rgba(255,255,255,0.35);
-        }
-        /* Pulsante download nell'header "In Riproduzione": era rimasto sullo stile
-           "piatto" (solo icona) mentre avanti/indietro sono diventati cerchi in vetro
-           frosted — disallineato dal resto dei controlli. Stesso trattamento identico:
-           stesso sfondo/bordo dei pulsanti avanti/indietro. Icona in viola accento (come
-           tutte le icone download dell'app), non più bianca. Resta disabilitato/appannato
-           (opacity-30 già in classe HTML), qui sistemo solo colori e forma. */
-        html.frosted #sheetDownloadBtn {
-            width: 25px; height: 25px;
-            display: flex; align-items: center; justify-content: center;
-            background: var(--frosted-btn);
-            border: 1px solid rgba(255,255,255,0.35);
-            border-radius: 50%;
-            color: var(--accent) !important;
-        }
-        html.frosted #sheetDownloadBtn i { color: var(--accent) !important; }
-        /* Barra del minutaggio: binario in vetro chiaro, riempimento viola acceso. */
-        html.frosted #progressBarContainer > div:first-child,
-        html.frosted #miniProgressBarContainer > div:first-child {
-            background: rgba(255,255,255,0.32) !important;
-        }
-        html.frosted #progressBar,
-        html.frosted #miniProgressBar {
-            background-color: var(--accent) !important;
-        }
-        html.frosted #pwaInstallBtn {
-            background: var(--accent) !important;
-            color: #fff !important;
-        }
-        html.frosted .theme-opt.active { color: var(--frosted-highlight); }
-        /* Pillola del tab "Frosted" nel selettore: il primo tentativo (azzurro pallido
-           = --bg-gradient-top) aveva quasi la stessa luminosità del testo viola sopra —
-           contrasto reale ~1.5:1, praticamente illeggibile. Questo blu-petrolio più
-           profondo resta chiaramente "azzurro" (non il blu-notte quasi nero di prima)
-           ma è scuro abbastanza da far risaltare il viola chiaro sopra (~3.5:1). */
-        html.frosted .theme-select-thumb { background: #1C4A63; }
 
         /* ================= Selettore Tema (Moderna / Walkman) ================= */
         .theme-select-row .lbl { font-size:13px; font-weight:600; color:var(--text-main); }
@@ -1350,12 +1112,6 @@
         }
         .vinyl-opt.active { color:#14120e; }
         html.walkman .vinyl-toggle-thumb { background: var(--walkman-highlight); }
-        html.frosted .vinyl-toggle-thumb { background: #1C4A63; }
-        html.frosted .vinyl-opt.active { color: var(--frosted-highlight); }
-        /* La riga di testo "cantata ora" usava --accent (viola scuro #8B2FD9), che contro lo
-           sfondo blu-teal di questa skin risultava poco leggibile. Stesso indaco-violetto
-           chiaro già usato altrove in Frosted per lo stesso problema di contrasto. */
-        html.frosted .lyrics-line.active { color: var(--frosted-highlight); }
         /* Stesso motivo di repeat/sleep timer/download qui sopra: --accent in questo tema
            è bianco/argento, quindi la riga di testo "cantata ora" risultava bianca invece
            che nel viola highlight riservato agli stati attivi. */
@@ -1651,7 +1407,6 @@
                         <div class="theme-select-thumb" id="themeSelectThumb"></div>
                         <div class="theme-opt" data-theme="moderna" role="tab">Moderna</div>
                         <div class="theme-opt" data-theme="walkman" role="tab">Walkman</div>
-                        <div class="theme-opt" data-theme="frosted" role="tab">Frosted</div>
                     </div>
                 </div>
                 <div class="theme-select-row vinyl-toggle-row">
@@ -2475,13 +2230,13 @@
             // --bg-main a nero puro, quindi anche qui deve diventare nero, non restare sul
             // viola/blu di "Moderna" come accadeva prima (nessun aggiornamento a runtime).
             function updateMetaThemeColor(theme) {
-                const color = (theme === 'walkman') ? '#000000' : (theme === 'frosted') ? '#0A2F5C' : '#0D0E12';
+                const color = (theme === 'walkman') ? '#000000' : '#0D0E12';
                 document.getElementById('metaThemeColor')?.setAttribute('content', color);
                 document.getElementById('metaThemeColorDark')?.setAttribute('content', color);
             }
             function setTheme(theme) {
-                if (theme !== 'walkman' && theme !== 'frosted') theme = 'moderna';
-                document.documentElement.classList.remove('walkman', 'frosted');
+                if (theme !== 'walkman') theme = 'moderna';
+                document.documentElement.classList.remove('walkman');
                 if (theme !== 'moderna') document.documentElement.classList.add(theme);
                 applyWalkmanIcons(theme === 'walkman');
                 updateMetaThemeColor(theme);
@@ -2548,7 +2303,6 @@
             if (themeSelectEl) {
                 let currentTheme = 'moderna';
                 if (document.documentElement.classList.contains('walkman')) currentTheme = 'walkman';
-                else if (document.documentElement.classList.contains('frosted')) currentTheme = 'frosted';
                 setTheme(currentTheme);
                 themeOptEls.forEach(opt => {
                     opt.addEventListener('click', () => setTheme(opt.dataset.theme));
@@ -4113,7 +3867,7 @@
         // viene da una playlist Spotify importata, mostra "Riproduzione da Playlist:" +
         // il nome (stile Spotify) ed è tappabile; per un brano da ricerca YouTube (non
         // è propriamente una "playlist") resta l'etichetta generica "In Riproduzione",
-        // non cliccabile. Vale per tutte le skin, non solo frosted.
+        // non cliccabile. Vale per tutte le skin.
         function updateNowPlayingHeaderLabel() {
             const center = document.getElementById('sheetHeaderCenter');
             const eyebrow = document.getElementById('sheetHeaderEyebrow');

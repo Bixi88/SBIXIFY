@@ -49,6 +49,11 @@
                e url di sfondo del mini player, entrambi con un fallback statico finché
                nessun brano è ancora stato caricato. */
             --immersive-color: #0B0B0E;
+            --immersive-color-15: rgba(11,11,14,0.15);
+            --immersive-color-35: rgba(11,11,14,0.35);
+            --immersive-color-55: rgba(11,11,14,0.55);
+            --immersive-color-75: rgba(11,11,14,0.75);
+            --immersive-color-90: rgba(11,11,14,0.9);
         }
 
         html, body {
@@ -1034,14 +1039,18 @@
             object-fit: cover;
         }
         /* Sfumatura in due parti, entrambe nel colore dinamico (non più nero) per
-           unificare header e artwork nello stesso "mood" cromatico del brano:
+           unificare header e artwork nello stesso "mood" cromatico del brano, esattamente
+           come nella reference (che scurisce sempre verso il proprio colore, mai verso un
+           nero neutro che stonerebbe con la tonalità dell'artwork):
            1) In alto, una riga piena nel colore dominante (0-6%) che fa da sfondo a
               "In riproduzione"/nome playlist, poi si dissolve rapidamente verso l'artwork
               (fino al 22%) lasciandolo pulito e leggibile.
-           2) Verso il basso, una copertura ancora più lunga e graduale di prima (dal 34%
-              fino all'80%, cioè quasi metà artwork), con più tappe intermedie per una
-              curva morbidissima invece di poche tappe brusche, che rivela il colore pieno
-              esattamente dove finisce l'immagine (80%) senza cuciture visibili. Niente
+           2) Verso il basso, una copertura lunga e graduale (dal 34% all'80%) che scurisce
+              progressivamente usando le varianti a opacità crescente dello stesso colore
+              dominante (--immersive-color-15/35/55/75/90, calcolate in JS in
+              updateImmersiveColorFromArtwork) invece di rgba(0,0,0,...): niente più nero
+              neutro, la tonalità del brano resta coerente per tutta la sfumatura. Rivela il
+              colore pieno esattamente dove finisce l'immagine (80%), senza cuciture. Niente
               color-mix() (vedi nota già presente prima): solo rgba()/var() dirette. */
         html.immersive #immersiveBg::after {
             content: '';
@@ -1052,11 +1061,11 @@
                 var(--immersive-color) 6%,
                 rgba(0,0,0,0) 22%,
                 rgba(0,0,0,0) 34%,
-                rgba(0,0,0,0.12) 44%,
-                rgba(0,0,0,0.26) 52%,
-                rgba(0,0,0,0.42) 60%,
-                rgba(0,0,0,0.6) 68%,
-                rgba(0,0,0,0.8) 75%,
+                var(--immersive-color-15) 44%,
+                var(--immersive-color-35) 52%,
+                var(--immersive-color-55) 60%,
+                var(--immersive-color-75) 68%,
+                var(--immersive-color-90) 75%,
                 var(--immersive-color) 80%,
                 var(--immersive-color) 100%);
             transition: opacity 0.25s ease;
@@ -1825,7 +1834,7 @@
                             const factor = maxLum / lum;
                             r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);
                         }
-                        callback('rgb(' + r + ',' + g + ',' + b + ')');
+                        callback(r, g, b);
                     } catch (e) { callback(null); }
                 };
                 img.onerror = () => callback(null);
@@ -1846,9 +1855,23 @@
         function updateImmersiveColorFromArtwork(url) {
             if (!url) return;
             applyImmersiveArtwork(url);
-            extractDominantDarkColor(url, (color) => {
-                const c = color || 'rgb(11,11,14)';
-                document.documentElement.style.setProperty('--immersive-color', c);
+            extractDominantDarkColor(url, (r, g, b) => {
+                // Fallback se l'estrazione fallisce (CORS, immagine non ancora pronta, ecc.).
+                if (r == null) { r = 11; g = 11; b = 14; }
+                const root = document.documentElement.style;
+                root.setProperty('--immersive-color', `rgb(${r},${g},${b})`);
+                // Varianti dello stesso colore a diverse opacità: servono alla sfumatura
+                // dell'artwork (vedi html.immersive #immersiveBg::after) per scurire usando
+                // la TONALITÀ del brano invece del nero puro, come nella reference - senza
+                // ricorrere a color-mix() (non supportato da alcuni WebView Android, vedi
+                // nota già presente sul gradiente). Qui il calcolo è già fatto in JS con
+                // numeri semplici, quindi ogni variante è una normalissima rgba() diretta.
+                root.setProperty('--immersive-color-15', `rgba(${r},${g},${b},0.15)`);
+                root.setProperty('--immersive-color-35', `rgba(${r},${g},${b},0.35)`);
+                root.setProperty('--immersive-color-55', `rgba(${r},${g},${b},0.55)`);
+                root.setProperty('--immersive-color-75', `rgba(${r},${g},${b},0.75)`);
+                root.setProperty('--immersive-color-90', `rgba(${r},${g},${b},0.9)`);
+                const c = `rgb(${r},${g},${b})`;
                 if (document.documentElement.classList.contains('immersive')) {
                     document.getElementById('metaThemeColor')?.setAttribute('content', c);
                     document.getElementById('metaThemeColorDark')?.setAttribute('content', c);
@@ -2122,27 +2145,46 @@
         // (immagine pronta, presa dalla cache del browser dato che tempImg l'ha già scaricata).
         // Serve a chi apre la Now Playing Sheet per sapere quando l'artwork è disponibile,
         // così da poter aspettare ed evitare di mostrare il placeholder grigio.
+        // Cascata di qualità: maxresdefault (1280x720) è il migliore ma non esiste per tutti
+        // i video (YouTube in quel caso serve un placeholder grigio 120x90, rilevabile dalla
+        // naturalWidth). Prima di arrendersi al minuscolo mqdefault (320x180, che sulla skin
+        // Immersive - dove l'artwork riempie l'80% dello schermo - risultava visibilmente
+        // sfocato) si prova sddefault (640x480) e poi hqdefault (480x360), che quasi sempre
+        // esistono anche quando il maxres manca.
         function displayArtwork(imgElement, videoId) {
             if (!imgElement || !videoId) return Promise.resolve();
 
-            const maxres = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-            const mq = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+            const candidates = [
+                `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
+                `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+            ];
 
             return new Promise((resolve) => {
-                const tempImg = new Image();
-                tempImg.onload = function () {
-                    if (this.naturalWidth === 120) {
-                        imgElement.src = mq;
-                    } else {
-                        imgElement.src = maxres;
+                function tryNext(i) {
+                    if (i >= candidates.length - 1) {
+                        // Ultima spiaggia: mqdefault esiste sempre, non serve verificarlo.
+                        imgElement.src = candidates[candidates.length - 1];
+                        resolve();
+                        return;
                     }
-                    resolve();
-                };
-                tempImg.onerror = function () {
-                    imgElement.src = mq;
-                    resolve();
-                };
-                tempImg.src = maxres;
+                    const tempImg = new Image();
+                    tempImg.onload = function () {
+                        // 120x90 è il placeholder grigio che YouTube serve quando quella
+                        // specifica risoluzione non esiste per il video: si passa alla
+                        // prossima candidata invece di mostrarlo.
+                        if (this.naturalWidth === 120) {
+                            tryNext(i + 1);
+                        } else {
+                            imgElement.src = candidates[i];
+                            resolve();
+                        }
+                    };
+                    tempImg.onerror = function () { tryNext(i + 1); };
+                    tempImg.src = candidates[i];
+                }
+                tryNext(0);
             });
         }
 

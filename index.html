@@ -157,11 +157,8 @@
         #homeView, #resultsView {
             width: 50%;
         }
-        /* --- FADE SFUMATO DELLA LISTA CANZONI (alto: sotto la barra menu/ricerca) --- */
-        #resultsView {
-            -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 100%);
-            mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 100%);
-        }
+        /* La maschera sfumata in cima non serve più: l'header risultati ora è dentro
+           #resultsView (sticky, con sfondo opaco) invece che esterno/assoluto sopra la lista. */
         /* --- FADE-IN A CASCATA DEI BRANI (dall'alto verso il basso) --- */
         @keyframes trackRowIn {
             from { opacity: 0; transform: translateY(-14px); }
@@ -666,16 +663,16 @@
         .settings-playlist-remove:active { color: var(--text-main); transform: scale(0.9); }
 
         /* ================= HEADER: home (menu + titolo + pillola ricerca) ================= */
-        /* home-header e results-header sono impilati uno sopra l'altro (position:absolute)
-           dentro questo contenitore. L'altezza NON è più animata: viene fissata al massimo tra le due altezze naturali
-           (vedi syncHeaderStackHeight) così il passaggio home<->risultati resta sempre e solo
-           orizzontale (lo slide di #viewsSlider), senza alcuna componente verticale che
-           produceva l'effetto "in diagonale". È normale che la lista risultati, se il suo
-           header è più basso di quello home, parta leggermente più in alto: nessun problema. */
-        .header-stack { position:relative; overflow:hidden; }
-        .header-stack > .home-header, .header-stack > .results-header { position:absolute; top:0; left:0; right:0; }
-        .home-header { padding: 4px 6px 0; opacity:1; pointer-events:auto; transition: opacity 0.2s ease; }
-        .home-header.home-hidden { opacity:0; pointer-events:none; }
+        /* L'header ora è il primo figlio della vista home (dentro #homeView, che scrolla)
+           invece di un blocco esterno con altezza sincronizzata via JS: reso "sticky" in
+           cima, si comporta come un header fisso ma la sua altezza è sempre quella naturale
+           del contenuto (nessun calcolo/animazione necessaria). Sfondo pieno (--bg-main) per
+           coprire la lista quando scorre sotto. */
+        .home-header {
+            position: sticky; top: 0; z-index: 20;
+            background: var(--bg-main);
+            padding: 4px 6px 0;
+        }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
         .menu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; flex:0 0 auto; }
         .menu-bars { width:18px; height:13px; display:flex; flex-direction:column; justify-content:space-between; }
@@ -695,10 +692,14 @@
         #searchInput::-webkit-search-results-decoration { display:none; -webkit-appearance:none; }
         #searchInput::placeholder { color:#8b8794; }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
-        /* Sempre in flusso (mai display:none) così se ne può sempre misurare l'altezza
-           naturale via JS (scrollHeight) per calcolare l'altezza fissa di .header-stack. */
-        .results-header { display:flex; align-items:center; gap:14px; padding:6px 8px 0; height:40px; opacity:0; pointer-events:none; transition: opacity 0.2s ease; }
-        .results-header.visible { opacity:1; pointer-events:auto; }
+        /* Stesso discorso dell'header home: ora è il primo figlio di #resultsView, sticky
+           in cima con sfondo pieno, altezza sempre naturale e compatta. */
+        .results-header {
+            position: sticky; top: 0; z-index: 20;
+            display:flex; align-items:center; gap:14px;
+            padding:10px 8px 6px; height:40px;
+            background: var(--bg-main);
+        }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
         .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
@@ -1373,59 +1374,45 @@
         <input type="password" name="password" autocomplete="new-password" tabindex="-1">
     </div>
 
-    <header class="shrink-0 z-40 relative">
-        <!-- I due header (home e risultati) sono impilati nella stessa cella di una grid:
-             così l'altezza dell'header è sempre quella del più alto dei due (home, per via
-             della pillola di ricerca) e passare dall'uno all'altro non fa mai ridimensionare
-             <main> di scatto (mostra/nascondi ora è solo opacity, mai display:none). -->
-        <div class="header-stack">
-        <!-- HEADER HOME: menu impostazioni + titolo + pillola di ricerca -->
-        <div class="home-header" id="homeHeader">
-            <div class="home-header-row">
-                <button id="apiConfigBtn" class="menu-icon-btn" title="Impostazioni">
-                    <span class="menu-bars"><span></span><span></span></span>
-                    <span id="apiErrorBadge" class="error-badge hidden" title="Servizio di ricerca non disponibile"></span>
-                </button>
-                <h1 class="app-title display">SBIXI<span class="custom-text-accent">FY</span></h1>
-                <button id="appUpdateBtn" class="hidden update-btn" title="Aggiorna App">
-                    <i class="fa-solid fa-arrows-rotate text-sm"></i>
-                    <span class="update-dot"></span>
-                </button>
-            </div>
-
-            <div class="search-pill" id="searchContainer">
-                <button id="searchTriggerBtn" class="mag-btn" title="Cerca">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                </button>
-                <input type="search" id="searchInput" placeholder="Cosa vuoi ascoltare oggi?"
-                    autocomplete="off" autocorrect="off" spellcheck="false"
-                    data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
-            </div>
-        </div>
-
-        <!-- HEADER RISULTATI: freccia indietro + nome ricerca/playlist -->
-        <div class="results-header" id="resultsHeader">
-            <button id="backToHomeBtn" class="back-btn" title="Torna alla home">
-                <i class="fa-solid fa-arrow-left"></i>
-            </button>
-            <span class="rt display" id="resultsTitle">Risultati</span>
-            <button id="refreshPlaylistBtn" class="hidden refresh-btn" title="Aggiorna playlist (ricarica da Spotify, salta la cache)">
-                <i class="fa-solid fa-rotate"></i>
-            </button>
-        </div>
-        </div>
-
-        <button id="pwaInstallBtn" class="hidden absolute top-2 right-2 text-[#1a1305] font-bold text-[10px] px-3 py-1.5 rounded-full active:scale-95 transition-transform custom-bg-accent z-50">
-            <i class="fa-solid fa-download mr-1"></i> Installa
-        </button>
-    </header>
-
     <!-- Sezione Principale -->
     <main class="flex-1 flex flex-col overflow-hidden z-10 relative">
         <section class="flex-1 flex flex-col overflow-hidden h-full relative">
             <div id="viewsSlider" class="flex h-full">
                 <!-- VISTA 1: Home (Recenti) -->
                 <div id="homeView" class="shrink-0 h-full overflow-y-auto pr-0 pb-28">
+                    <!-- HEADER HOME: menu impostazioni + titolo + pillola di ricerca.
+                         Ora è il PRIMO figlio della vista home stessa (sticky in cima),
+                         invece di stare fuori/sopra come blocco a parte con altezza
+                         sincronizzata via JS: così scorre insieme al resto della vista
+                         durante lo swipe/slide, che resta sempre e solo orizzontale, e
+                         mantiene sempre la sua altezza naturale (niente più vuoti). -->
+                    <div class="home-header" id="homeHeader">
+                        <div class="home-header-row">
+                            <button id="apiConfigBtn" class="menu-icon-btn" title="Impostazioni">
+                                <span class="menu-bars"><span></span><span></span></span>
+                                <span id="apiErrorBadge" class="error-badge hidden" title="Servizio di ricerca non disponibile"></span>
+                            </button>
+                            <h1 class="app-title display">SBIXI<span class="custom-text-accent">FY</span></h1>
+                            <button id="appUpdateBtn" class="hidden update-btn" title="Aggiorna App">
+                                <i class="fa-solid fa-arrows-rotate text-sm"></i>
+                                <span class="update-dot"></span>
+                            </button>
+                        </div>
+
+                        <div class="search-pill" id="searchContainer">
+                            <button id="searchTriggerBtn" class="mag-btn" title="Cerca">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                            <input type="search" id="searchInput" placeholder="Cosa vuoi ascoltare oggi?"
+                                autocomplete="off" autocorrect="off" spellcheck="false"
+                                data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+                        </div>
+
+                        <button id="pwaInstallBtn" class="hidden absolute top-2 right-2 text-[#1a1305] font-bold text-[10px] px-3 py-1.5 rounded-full active:scale-95 transition-transform custom-bg-accent z-50">
+                            <i class="fa-solid fa-download mr-1"></i> Installa
+                        </button>
+                    </div>
+
                     <div class="quick-eyebrow">Playlist</div>
                     <div id="recentGrid" class="quick-grid hidden"></div>
                     <div id="recentTracksSection" class="hidden">
@@ -1439,6 +1426,19 @@
                 </div>
                 <!-- VISTA 2: Lista Canzoni (risultati ricerca / playlist aperta) -->
                 <div id="resultsView" class="shrink-0 h-full overflow-y-auto pr-0">
+                    <!-- HEADER RISULTATI: freccia indietro + nome ricerca/playlist.
+                         Stesso discorso dell'header home: primo figlio della vista
+                         risultati stessa (sticky in cima), altezza sempre naturale
+                         e compatta, nessuna sincronizzazione JS necessaria. -->
+                    <div class="results-header" id="resultsHeader">
+                        <button id="backToHomeBtn" class="back-btn" title="Torna alla home">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <span class="rt display" id="resultsTitle">Risultati</span>
+                        <button id="refreshPlaylistBtn" class="hidden refresh-btn" title="Aggiorna playlist (ricarica da Spotify, salta la cache)">
+                            <i class="fa-solid fa-rotate"></i>
+                        </button>
+                    </div>
                     <p id="resultsStatusText" class="hidden text-xs p-8 italic text-center mt-12 custom-text-muted"></p>
                     <div id="trackList" class="pb-28 px-6 pt-4"></div>
                 </div>
@@ -5111,28 +5111,11 @@
         }
 
         // --- NAVIGAZIONE ANIMATA TRA VISTA PLAYLIST E VISTA LISTA CANZONI ---
-        // I due header sono impilati uno sopra l'altro (position:absolute) dentro
-        // #headerStack. La sua altezza NON viene più animata: resta sempre fissa al
-        // massimo tra le due altezze naturali (home/risultati), calcolata qui e
-        // ricalcolata solo se il contenuto cambia (es. resize). In questo modo lo
-        // swipe/slide tra home e risultati è SEMPRE e SOLO orizzontale (nessuna
-        // componente verticale che dava l'effetto "in diagonale"): è normale ed
-        // accettato che la lista canzoni, se il suo header è più basso, parta un
-        // filo più in alto rispetto a prima.
-        const headerStackEl = document.querySelector('.header-stack');
-        function syncHeaderStackHeight() {
-            if (!headerStackEl) return;
-            const homeH = document.getElementById('homeHeader')?.scrollHeight || 0;
-            const resultsH = document.getElementById('resultsHeader')?.scrollHeight || 0;
-            headerStackEl.style.height = Math.max(homeH, resultsH) + 'px';
-        }
-        // Ricalcola se cambia l'altezza naturale dell'header home (es. rotazione schermo).
-        (function watchHomeHeaderHeight() {
-            const homeHeaderEl = document.getElementById('homeHeader');
-            if (!homeHeaderEl || !window.ResizeObserver) return;
-            new ResizeObserver(() => syncHeaderStackHeight()).observe(homeHeaderEl);
-        })();
-        syncHeaderStackHeight(); // stato iniziale
+        // I due header ora sono ciascuno il primo figlio della propria vista (dentro
+        // #homeView e #resultsView), sticky in cima ad essa: scorrono insieme al resto
+        // del contenuto come un unico blocco quando #viewsSlider trasla orizzontalmente,
+        // quindi lo swipe/slide è SEMPRE e SOLO orizzontale, senza alcuna sincronizzazione
+        // di altezza via JS (ognuno mantiene sempre la propria altezza naturale/compatta).
 
         function showResultsView(title) {
             const slider = document.getElementById('viewsSlider');
@@ -5142,8 +5125,6 @@
             }
             if (!slider || slider.classList.contains('showing-results')) return;
             slider.classList.add('showing-results');
-            document.getElementById('homeHeader')?.classList.add('home-hidden');
-            document.getElementById('resultsHeader')?.classList.add('visible');
             window.history.pushState({ page: 'results' }, 'Results');
         }
 
@@ -5151,8 +5132,6 @@
             const slider = document.getElementById('viewsSlider');
             if (!slider) return;
             slider.classList.remove('showing-results');
-            document.getElementById('homeHeader')?.classList.remove('home-hidden');
-            document.getElementById('resultsHeader')?.classList.remove('visible');
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';

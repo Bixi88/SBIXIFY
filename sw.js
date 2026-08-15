@@ -4,7 +4,7 @@
 // Questa versione va aggiornata SOLO se un giorno modifichi la logica
 // di questo file (nuove strategie di cache, nuovi asset precaricati, ecc.) —
 // non per i normali aggiornamenti di index.html.
-const CACHE_NAME = 'sbixify-cache-v2';
+const CACHE_NAME = 'sbixify-cache-v3';
 
 // Cache separata per le immagini (thumbnail YouTube, artwork iTunes): a
 // differenza della cache dell'app shell, questa non va mai svuotata negli

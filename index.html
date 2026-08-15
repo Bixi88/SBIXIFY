@@ -1827,34 +1827,59 @@
                 if (pendingUnmuteForVideoId && player?.getVideoData?.()?.video_id === pendingUnmuteForVideoId) {
                     pendingUnmuteForVideoId = null;
                     const targetVolume = Number(document.getElementById('volumeSlider')?.value || 100);
-                    setTimeout(() => rampVolumeTo(targetVolume, 250), 350);
+                    if (document.hidden) {
+                        // App in background (schermo spento, Android Auto): l'attesa di 350ms
+                        // più la rampa di 250ms lascerebbero il player silenzioso per quasi un
+                        // secondo proprio nel momento in cui il sistema decide se l'audio è
+                        // "vivo" e merita di mantenere il focus/l'esecuzione in background -
+                        // è esattamente lì che un cambio brano automatico (repeat, avanzamento
+                        // playlist) restava bloccato: PLAYING risultava già attivo ma senza
+                        // alcun suono reale in uscita. A schermo spento il piccolo tick
+                        // anti-fruscio non si sente comunque, quindi qui alziamo il volume
+                        // SUBITO invece di aspettare.
+                        if (player?.setVolume) { try { player.setVolume(targetVolume); } catch (e) {} }
+                    } else {
+                        setTimeout(() => rampVolumeTo(targetVolume, 250), 350);
+                    }
                 }
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
-                updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                // NON fermare il keep-alive se questo PAUSED è solo il fermo interno che
-                // loadTrack() fa in cima a se stessa ad ogni cambio brano (appState.intendedPlaying
-                // resta true in quel caso, l'utente vuole ancora ascoltare). Su Android Auto,
+                // NON fermare il keep-alive né segnalare "paused" alla Media Session se
+                // questo PAUSED è solo il fermo interno che loadTrack() fa in cima a se
+                // stessa ad ogni cambio brano (appState.intendedPlaying resta true in quel
+                // caso, l'utente vuole ancora ascoltare). Su Android Auto,
                 // spegnere anche solo per un istante l'audio "udibile" proprio nel momento in cui
                 // deve partire il nuovo video fa sì che Chrome tratti la scheda come in background
                 // e blocchi l'autoplay del loadVideoById() successivo: il player resta caricato ma
                 // fermo, col widget Android Auto bloccato sull'icona play (il sintomo segnalato:
-                // la canzone "si blocca" ad ogni cambio). Il keep-alive va fermato solo su una
-                // pausa vera, decisa dall'utente.
-                if (!appState.intendedPlaying) syncKeepAlive(false);
+                // la canzone "si blocca" ad ogni cambio). Lo stesso vale per
+                // navigator.mediaSession.playbackState: è il segnale che il sistema (il
+                // widget Android Auto stesso) usa per decidere se l'app sta ancora
+                // riproducendo qualcosa e merita di restare attiva in background - flippare
+                // anche solo per un istante a "paused" durante il buffering del nuovo video
+                // può far revocare l'audio focus proprio mentre serve, impedendo poi
+                // all'autoplay di ripartire. Va fermato/segnalato solo su una pausa vera,
+                // decisa dall'utente.
+                if (!appState.intendedPlaying) {
+                    updateMediaSessionState(false);
+                    syncKeepAlive(false);
+                }
             } else if (event.data == YT.PlayerState.ENDED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
-                updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                // handleTrackEnded() PRIMA di decidere sul keep-alive: se fa partire il brano
-                // successivo, appState.intendedPlaying resta true e non va toccato, per lo stesso
-                // motivo del ramo PAUSED qui sopra. Solo se la coda è davvero finita (e viene
-                // impostato intendedPlaying = false al suo interno) fermiamo il keep-alive.
+                // handleTrackEnded() PRIMA di decidere su keep-alive/media session: se fa
+                // partire il brano successivo (avanzamento normale o wrap del repeat),
+                // appState.intendedPlaying resta true e nessuno dei due va toccato, per lo
+                // stesso motivo del ramo PAUSED qui sopra. Solo se la coda è davvero finita
+                // (e viene impostato intendedPlaying = false al suo interno) li fermiamo.
                 handleTrackEnded();
-                if (!appState.intendedPlaying) syncKeepAlive(false);
+                if (!appState.intendedPlaying) {
+                    updateMediaSessionState(false);
+                    syncKeepAlive(false);
+                }
             }
             // BUFFERING (3), UNSTARTED (-1), CUED (5): nessuna modifica all'icona.
         }

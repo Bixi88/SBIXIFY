@@ -864,10 +864,10 @@
         html.walkman #miniPlayerImgFrame {
             border-radius: 50% !important;
             box-shadow: none;
-            /* Bianco pieno (non più semitrasparente, che sulla mescolanza con lo sfondo
-               nero risultava grigiastro) e spessore aumentato da 6px a 8px per massima
-               visibilità anche su copertine chiare. */
-            border: 8px solid #FFFFFF;
+            /* Stessa cornice esatta della lista canzoni (.track-thumb-wrap / .qcard .circle):
+               2.5px, rgba(255,255,255,0.55). L'artwork del miniplayer deve essere identica
+               alle altre, nessun trattamento speciale qui. */
+            border: 2.5px solid rgba(255,255,255,0.55);
         }
         /* Cornice bianca "a vetro": sul grande artwork della Now Playing sheet è
            leggermente più spessa, coerente col trattamento delle altre artwork. */
@@ -918,6 +918,13 @@
             border: 1px solid rgba(240,240,242,0.14);
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
+        }
+        /* Cornice del contenitore "a pillola" del mini player un po' più spessa
+           delle altre superfici .glass-panel (menu impostazioni, toast), che
+           restano a 1px: qui, isolato da loro, il pannello risulta più definito
+           contro lo sfondo nero pieno di questo tema. */
+        html.walkman #miniPlayer {
+            border-width: 2px;
         }
         /* Pulsanti play/pausa: anello vuoto invece del cerchio arancione pieno */
         html.walkman #playPauseBtn,

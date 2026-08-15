@@ -683,13 +683,13 @@
            sotto svaniscono prima di toccare la pillola invece di intravedersi dietro. */
         .home-header::before {
             content: ''; position: absolute; z-index: -1;
-            top: 0; left: -6px; right: -6px; height: 100%;
+            top: 0; left: 0; right: 0; height: 100%;
             background: var(--bg-main);
             pointer-events: none;
         }
         .home-header::after {
             content: ''; position: absolute; z-index: -1;
-            top: 100%; left: -6px; right: -6px; height: 56px;
+            top: 100%; left: 0; right: 0; height: 56px;
             background: linear-gradient(to bottom, var(--bg-main) 0%, transparent 100%);
             pointer-events: none;
         }
@@ -724,13 +724,13 @@
            lista canzoni che scorre sotto (vedi commento esteso sopra su .home-header). */
         .results-header::before {
             content: ''; position: absolute; z-index: -1;
-            top: 0; left: -6px; right: -6px; height: 100%;
+            top: 0; left: 0; right: 0; height: 100%;
             background: var(--bg-main);
             pointer-events: none;
         }
         .results-header::after {
             content: ''; position: absolute; z-index: -1;
-            top: 100%; left: -6px; right: -6px; height: 56px;
+            top: 100%; left: 0; right: 0; height: 56px;
             background: linear-gradient(to bottom, var(--bg-main) 0%, transparent 100%);
             pointer-events: none;
         }

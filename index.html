@@ -1068,20 +1068,24 @@
                 var(--immersive-color-90) 75%,
                 var(--immersive-color) 80%,
                 var(--immersive-color) 100%);
+        }
+        /* Testi aperti: invece di far sparire immagine+gradiente sottostanti (bug di
+           rendering su alcune WebView Android: quella transizione di opacità scattava
+           in un frame solo invece di dissolversi in 0.38s), un unico layer piatto del
+           colore dominante (#immersiveLyricsCover, vedi HTML sopra) si dissolve IN
+           SOPRA a tutto, coprendolo. Stessa durata/curva del pannello lyrics/vinile
+           (#vinylSlide, #lyricsPanel) così restano sincronizzati come dissolvenza. */
+        html.immersive #immersiveLyricsCover {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            background: var(--immersive-color);
+            opacity: 0;
+            pointer-events: none;
             transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        html.immersive #immersiveBgImg { transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1); }
-        /* Testi aperti: l'artwork (immagine + sfumatura) sparisce del tutto e resta solo il
-           colore pieno impostato su #nowPlayingSheet stesso, che così copre l'intero schermo
-           in modo uniforme dietro al pannello dei testi - non solo dietro al suo riquadro.
-           La transizione qui sopra (0.38s, stessa cubic-bezier del pannello lyrics/vinile
-           in #vinylSlide e #lyricsPanel) è impostata apposta identica a quella dello swipe:
-           prima erano due durate/curve diverse (0.25s ease qui, 0.38s cubic-bezier lì),
-           quindi lo sfondo spariva "di scatto" rispetto allo scorrimento del pannello,
-           risultando incoerente. Ora sfumano via alla stessa velocità, nello stesso istante. */
-        html.immersive #nowPlayingSheet.lyrics-open #immersiveBgImg,
-        html.immersive #nowPlayingSheet.lyrics-open #immersiveBg::after {
-            opacity: 0;
+        html.immersive #nowPlayingSheet.lyrics-open #immersiveLyricsCover {
+            opacity: 1;
         }
         /* Testi, minutaggio e pulsanti della Now Playing sheet: sempre bianchi in questa skin. */
         html.immersive #nowPlayingSheet #sheetHeaderEyebrow,
@@ -1499,6 +1503,14 @@
              (updateImmersiveColorFromArtwork) ogni volta che cambia l'artwork. -->
         <div id="immersiveBg" aria-hidden="true">
             <img id="immersiveBgImg" alt="">
+            <!-- Copertura piatta per i testi (skin Immersive): invece di far sparire
+                 l'artwork+gradiente sottostanti (opacity 1->0 su immagine + gradiente
+                 multi-stop, che su alcune WebView Android scatta invece di dissolversi
+                 - stesso tipo di bug già visto con color-mix()), questo singolo div del
+                 colore dominante si dissolve IN SOPRA (opacity 0->1). Un solo layer,
+                 un solo colore piatto, transizione di opacità semplice: molto più
+                 affidabile su motori di rendering ballerini. Vedi regole più sotto. -->
+            <div id="immersiveLyricsCover"></div>
         </div>
 
         <div id="sheetSwipeCloseArea" class="absolute inset-x-0 top-0 z-10 cursor-grab active:cursor-grabbing" style="touch-action: none; bottom: 310px;"></div>

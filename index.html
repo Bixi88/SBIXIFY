@@ -660,25 +660,38 @@
         .settings-playlist-remove:active { color: var(--text-main); transform: scale(0.9); }
 
         /* ================= HEADER: home (menu + titolo + pillola ricerca) ================= */
-        /* L'header ora è il primo figlio della vista home (dentro #homeView, che scrolla)
-           invece di un blocco esterno con altezza sincronizzata via JS: reso "sticky" in
-           cima, si comporta come un header fisso ma la sua altezza è sempre quella naturale
-           del contenuto (nessun calcolo/animazione necessaria). Nessuno sfondo pieno qui:
-           resta trasparente, il colore/dissolvenza dietro arriva dal layer fixed qui sotto
-           (#homeHeaderBgFixed), che non essendo figlio di #homeView non viene tagliato dal
-           bordo della vista (che ha overflow-y: auto e quindi, per la nota regola CSS,
-           taglierebbe anche in orizzontale qualunque sfondo provi a "sforare" i suoi bordi). */
+        /* L'header è il primo figlio della vista home (dentro #homeView, che scrolla),
+           reso "sticky" in cima: si comporta come un header fisso ma la sua altezza è
+           sempre quella naturale del contenuto. Lo sfondo/dissolvenza dietro è generato
+           da pseudo-elementi propri (vedi .home-header::before/::after qui sotto). */
         .home-header {
             position: sticky; top: 0; z-index: 25;
             padding: 4px 6px 0;
-            /* Forza un proprio layer di compositing: su alcuni WebView Android (es. Brave
-               come PWA) un discendente "sticky" con z-index più alto di un fratello
-               "fixed" con z-index più basso a volte veniva comunque dipinto SOTTO quel
-               fratello nonostante lo z-index lo garantisca da spec (bug di ordinamento
-               tra layer compositati). Promuovendo esplicitamente l'header al proprio
-               layer con transform, il browser rispetta l'ordine z-index anche tra layer
-               diversi, tenendo menu/pillola sempre sopra il velo nero fisso dietro. */
-            transform: translateZ(0);
+        }
+        /* Sfondo/dissolvenza ora DENTRO l'header stesso (pseudo-elementi), non più un
+           elemento a parte "position:fixed" fratello altrove nel DOM: quell'approccio,
+           dentro contenitori con overflow-hidden/overflow-y-auto in cascata, su alcuni
+           WebView Android (Brave/PWA) poteva clippare o disegnare nell'ordine sbagliato
+           in modo incoerente, nascondendo menu/pillola invece di stare dietro. Un
+           pseudo-elemento è invece SEMPRE figlio dell'header: eredita automaticamente
+           la sua stessa "elevazione" (sticky + z-index) sopra i contenuti successivi
+           che scorrono sotto, senza bisogno di controllare stacking-context distanti.
+           ::before copre di nero pieno esattamente l'altezza naturale dell'header
+           (100%, quindi arriva sempre fino al bordo inferiore della pillola, qualunque
+           esso sia — niente più altezze in px "indovinate"). ::after riprende subito
+           dopo (top:100%) e sfuma verso il trasparente, così le playlist che scorrono
+           sotto svaniscono prima di toccare la pillola invece di intravedersi dietro. */
+        .home-header::before {
+            content: ''; position: absolute; z-index: -1;
+            top: 0; left: -6px; right: -6px; height: 100%;
+            background: var(--bg-main);
+            pointer-events: none;
+        }
+        .home-header::after {
+            content: ''; position: absolute; z-index: -1;
+            top: 100%; left: -6px; right: -6px; height: 56px;
+            background: linear-gradient(to bottom, var(--bg-main) 0%, transparent 100%);
+            pointer-events: none;
         }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
         .menu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; flex:0 0 auto; }
@@ -699,46 +712,34 @@
         #searchInput::-webkit-search-results-decoration { display:none; -webkit-appearance:none; }
         #searchInput::placeholder { color:#8b8794; }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
-        /* Stesso discorso dell'header home: ora è il primo figlio di #resultsView, sticky
-           in cima, altezza sempre naturale e compatta. Nessuno sfondo pieno: trasparente,
-           il colore/dissolvenza arriva dal layer fixed #resultsHeaderBgFixed qui sotto. */
+        /* Stesso discorso dell'header home: primo figlio di #resultsView, sticky in cima,
+           sfondo/dissolvenza via pseudo-elementi propri (vedi ::before/::after sotto). */
         .results-header {
             position: sticky; top: 0; z-index: 25;
             display:flex; align-items:center; gap:14px;
             padding:10px 8px 6px; height:40px;
-            /* Stesso motivo del .home-header qui sopra: promuove l'header al proprio
-               layer di compositing per garantire che resti sempre sopra il velo nero
-               fisso dietro, indipendentemente dai bug di ordinamento tra layer di
-               alcuni WebView Android. */
-            transform: translateZ(0);
+        }
+        /* Stesso schema del .home-header qui sopra: sfondo pieno + dissolvenza tramite
+           pseudo-elementi figli, sempre disegnati nell'ordine giusto rispetto alla
+           lista canzoni che scorre sotto (vedi commento esteso sopra su .home-header). */
+        .results-header::before {
+            content: ''; position: absolute; z-index: -1;
+            top: 0; left: -6px; right: -6px; height: 100%;
+            background: var(--bg-main);
+            pointer-events: none;
+        }
+        .results-header::after {
+            content: ''; position: absolute; z-index: -1;
+            top: 100%; left: -6px; right: -6px; height: 56px;
+            background: linear-gradient(to bottom, var(--bg-main) 0%, transparent 100%);
+            pointer-events: none;
         }
 
-        /* ================= LAYER DI SFONDO FISSO (bordo a bordo) DIETRO GLI HEADER =================
-           #homeHeaderBgFixed / #resultsHeaderBgFixed non sono figli di #homeView/#resultsView:
-           sono "position: fixed", quindi ignorano completamente il bordo/overflow della vista
-           che scrolla e possono coprire la larghezza intera dello schermo (compreso lo spazio
-           dei 16px di padding del body, che invece limita l'header stesso e tutto il resto del
-           contenuto). Coprono nero pieno per l'altezza dell'header e poi sfumano a trasparente,
-           così il contenuto che scorre sotto sfuma invece di sovrapporsi o tagliarsi di netto.
-           z-index sotto l'header (che resta a 20, sempre sopra) ma sopra la lista che scorre. */
-        #homeHeaderBgFixed, #resultsHeaderBgFixed {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 5;
-            pointer-events: none;
-            background: linear-gradient(to bottom, var(--bg-main) 0%, var(--bg-main) 62%, transparent 100%);
-        }
-        /* La pillola di ricerca (menu 40px + margin-top 12px + pillola ~40px, dopo il
-           padding-top 4px dell'header) finisce intorno a 96px dalla cima: il nero pieno
-           deve arrivare fino a lì (con un margine) prima di iniziare a sfumare, altrimenti
-           le playlist che scorrono sotto si vedono trasparire proprio dietro la pillola.
-           Nero pieno fino al 78% (≈163px su 210) poi sfuma nei restanti 47px, ben sotto
-           il bordo inferiore della pillola. */
-        #homeHeaderBgFixed { height: 210px; background: linear-gradient(to bottom, var(--bg-main) 0%, var(--bg-main) 78%, transparent 100%); }
-        #resultsHeaderBgFixed { height: 100px; display: none; }
-        /* #viewsSlider guadagna/perde "showing-results" quando si passa da home a playlist
-           (stesso meccanismo già usato per la transizione orizzontale): lo riusiamo per
-           mostrare il layer giusto senza bisogno di altro JS. */
-        #viewsSlider.showing-results ~ #homeHeaderBgFixed { display: none; }
-        #viewsSlider.showing-results ~ #resultsHeaderBgFixed { display: block; }
+        /* (Il vecchio layer di sfondo "position:fixed" bordo-a-bordo dietro gli header è
+           stato rimosso: sostituito dai pseudo-elementi ::before/::after direttamente su
+           .home-header/.results-header qui sopra, per evitare i problemi di clipping/
+           stacking tra contenitori con overflow diversi. I due elementi vuoti che
+           c'erano prima nell'HTML sono stati rimossi, non servono più. */
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
         .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
@@ -1241,11 +1242,6 @@
                     <div id="trackList" class="pb-28 px-6 pt-4"></div>
                 </div>
             </div>
-            <!-- Layer di sfondo fisso, bordo a bordo, dietro agli header (vedi commento CSS
-                 sopra su #homeHeaderBgFixed/#resultsHeaderBgFixed per il perché sono qui e
-                 non dentro le view che scrollano). -->
-            <div id="homeHeaderBgFixed"></div>
-            <div id="resultsHeaderBgFixed"></div>
         </section>
 
         <div id="ytPlayerContainer" class="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"></div>

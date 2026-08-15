@@ -1141,11 +1141,15 @@
         }
         #lyricsScroll::-webkit-scrollbar { display: none; }
         .lyrics-line {
-            font-size: 16px;
+            font-size: 20px;
             line-height: 1.45;
             font-weight: 800;
             color: var(--text-muted);
-            opacity: 0.5;
+            opacity: 0.45;
+            /* Sfocatura sulle righe non attive (stile "a fuoco solo il presente" di
+               Apple Music/Spotify): la riga cantata ora risalta nitida, il resto sfuma
+               visivamente oltre che nell'opacità. */
+            filter: blur(2.5px);
             /* Padding laterale: lascia margine per l'ingrandimento della riga attiva
                (transform: scale) qui sotto, altrimenti le righe già larghe quasi
                quanto il contenitore vengono tagliate ai bordi quando si ingrandiscono
@@ -1154,14 +1158,15 @@
             text-align: center;
             overflow-wrap: break-word;
             word-break: break-word;
-            transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
+            transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease;
         }
         .lyrics-line.active {
             color: var(--accent);
             opacity: 1;
-            transform: scale(1.04);
+            filter: blur(0);
+            transform: scale(1.08);
         }
-        .lyrics-line.past { opacity: 0.28; }
+        .lyrics-line.past { opacity: 0.3; }
         .lyrics-state {
             flex: 1;
             display: flex;

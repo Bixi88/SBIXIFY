@@ -1449,16 +1449,6 @@
             tracks: [],
             currentIndex: -1,
             isPlaying: false,
-            // Distinto da isPlaying: isPlaying riflette lo stato ISTANTANEO del player
-            // YouTube (diventa false anche durante il breve pauseVideo() di transizione
-            // in loadTrack, o mentre un nuovo brano è ancora in buffering). intendedPlaying
-            // riflette invece la VOLONTÀ dell'utente ("dovrebbe star suonando qualcosa") e
-            // resta true per tutta la transizione tra un brano e il successivo. Il watchdog
-            // anti-stop e il recupero su visibilitychange si basano su questo, altrimenti
-            // proprio nel momento più delicato (cambio brano in background, dove il nuovo
-            // video può bloccarsi in buffering) si autodisabiliterebbero pensando che
-            // l'utente abbia messo in pausa volontariamente.
-            intendedPlaying: false,
             // Filtri della ricerca manuale (barra in alto): parte sempre da "qualsiasi",
             // sarà l'utente a cambiarli di volta in volta dal pannello filtri.
             filterDate: 'any',
@@ -1711,42 +1701,17 @@
 
         // --- UPGRADE AUTOMATICO DELLA QUALITÀ DOPO L'AVVIO ---
         // loadVideoById parte sempre con suggestedQuality:'small' per bufferizzare il
-        // minimo indispensabile e far partire l'audio il prima possibile (vedi commento
-        // in loadTrack). Una volta che il brano sta effettivamente suonando, però, non
-        // c'è più motivo di restare sulla qualità più bassa: alziamo automaticamente al
-        // massimo disponibile, ma non nell'istante esatto in cui parte (rischierebbe di
-        // causare un secondo micro-stallo proprio mentre l'utente sta ancora sentendo il
-        // primo attacco del brano) - aspettiamo qualche secondo che la riproduzione si
-        // sia stabilizzata.
+        // minimo indispensabile e far partire l'audio il prima possibile. Una volta che
+        // il brano sta effettivamente suonando, però, non c'è più motivo di restare
+        // sulla qualità più bassa: alziamo automaticamente al massimo disponibile, ma
+        // non nell'istante esatto in cui parte (rischierebbe di causare un secondo
+        // micro-stallo proprio mentre l'utente sta ancora sentendo il primo attacco del
+        // brano) - aspettiamo qualche secondo che la riproduzione si sia stabilizzata.
         // NB: setPlaybackQuality è "best-effort" - dai tempi dello streaming adattivo,
         // YouTube spesso lo tratta come un suggerimento e non una scelta vincolante, ma è
         // comunque l'unica leva che l'IFrame API espone.
         let qualityUpgradeTimer = null;
         let qualityUpgradedVideoId = null;
-
-        // videoId per cui è stato appena chiesto un mute "anti-tick" in loadTrack(): resta
-        // valorizzato finché quello specifico video non risulta davvero in riproduzione (o
-        // finché il caricamento non fallisce/viene superato da un cambio brano successivo).
-        let pendingUnmuteForVideoId = null;
-        let volumeRampTimer = null;
-
-        // Vero fade in graduale del volume, al posto dello switch binario mute()/unMute()
-        // (che causava il click: unMute() passa da volume 0 a 100 in un solo istante,
-        // qualunque sia il momento in cui viene chiamato). Qui saliamo a piccoli step
-        // ravvicinati, così l'orecchio non percepisce il salto.
-        function rampVolumeTo(targetVolume, duration = 250) {
-            if (!player?.setVolume) return;
-            clearInterval(volumeRampTimer);
-            const steps = 20;
-            const stepTime = duration / steps;
-            let currentStep = 0;
-            volumeRampTimer = setInterval(() => {
-                currentStep++;
-                const v = (targetVolume * currentStep) / steps;
-                try { player.setVolume(Math.round(v)); } catch (e) {}
-                if (currentStep >= steps) clearInterval(volumeRampTimer);
-            }, stepTime);
-        }
 
         function scheduleQualityUpgrade() {
             if (!player || !player.getVideoData) return;
@@ -1774,7 +1739,6 @@
         function onPlayerReady(event) {
             player.setVolume(document.getElementById('volumeSlider')?.value || 100);
             startProgressLoop();
-            startBackgroundWatchdog();
             setupMediaSessionHandlers();
             const ka = document.getElementById('keepAliveAudio');
             if (ka) ka.volume = 0.01; // percettibile solo dal browser, non dall'orecchio
@@ -1818,68 +1782,19 @@
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
                 scheduleQualityUpgrade();
-                // Se questo è il video per cui loadTrack() aveva silenziato il player in
-                // attesa dello swap, ora YouTube segnala PLAYING per lui - ma l'audio del
-                // brano precedente può restare in coda ancora per un istante dopo che
-                // l'id risulta già cambiato, quindi aspettiamo un margine più ampio (non
-                // solo qualche decina di ms) prima di togliere il mute, per essere sicuri
-                // che quella coda si sia davvero svuotata.
-                if (pendingUnmuteForVideoId && player?.getVideoData?.()?.video_id === pendingUnmuteForVideoId) {
-                    pendingUnmuteForVideoId = null;
-                    const targetVolume = Number(document.getElementById('volumeSlider')?.value || 100);
-                    if (document.hidden) {
-                        // App in background (schermo spento, Android Auto): l'attesa di 350ms
-                        // più la rampa di 250ms lascerebbero il player silenzioso per quasi un
-                        // secondo proprio nel momento in cui il sistema decide se l'audio è
-                        // "vivo" e merita di mantenere il focus/l'esecuzione in background -
-                        // è esattamente lì che un cambio brano automatico (repeat, avanzamento
-                        // playlist) restava bloccato: PLAYING risultava già attivo ma senza
-                        // alcun suono reale in uscita. A schermo spento il piccolo tick
-                        // anti-fruscio non si sente comunque, quindi qui alziamo il volume
-                        // SUBITO invece di aspettare.
-                        if (player?.setVolume) { try { player.setVolume(targetVolume); } catch (e) {} }
-                    } else {
-                        setTimeout(() => rampVolumeTo(targetVolume, 250), 350);
-                    }
-                }
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
+                updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                // NON fermare il keep-alive né segnalare "paused" alla Media Session se
-                // questo PAUSED è solo il fermo interno che loadTrack() fa in cima a se
-                // stessa ad ogni cambio brano (appState.intendedPlaying resta true in quel
-                // caso, l'utente vuole ancora ascoltare). Su Android Auto,
-                // spegnere anche solo per un istante l'audio "udibile" proprio nel momento in cui
-                // deve partire il nuovo video fa sì che Chrome tratti la scheda come in background
-                // e blocchi l'autoplay del loadVideoById() successivo: il player resta caricato ma
-                // fermo, col widget Android Auto bloccato sull'icona play (il sintomo segnalato:
-                // la canzone "si blocca" ad ogni cambio). Lo stesso vale per
-                // navigator.mediaSession.playbackState: è il segnale che il sistema (il
-                // widget Android Auto stesso) usa per decidere se l'app sta ancora
-                // riproducendo qualcosa e merita di restare attiva in background - flippare
-                // anche solo per un istante a "paused" durante il buffering del nuovo video
-                // può far revocare l'audio focus proprio mentre serve, impedendo poi
-                // all'autoplay di ripartire. Va fermato/segnalato solo su una pausa vera,
-                // decisa dall'utente.
-                if (!appState.intendedPlaying) {
-                    updateMediaSessionState(false);
-                    syncKeepAlive(false);
-                }
+                syncKeepAlive(false);
             } else if (event.data == YT.PlayerState.ENDED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
+                updateMediaSessionState(false);
                 updateMediaSessionPosition();
-                // handleTrackEnded() PRIMA di decidere su keep-alive/media session: se fa
-                // partire il brano successivo (avanzamento normale o wrap del repeat),
-                // appState.intendedPlaying resta true e nessuno dei due va toccato, per lo
-                // stesso motivo del ramo PAUSED qui sopra. Solo se la coda è davvero finita
-                // (e viene impostato intendedPlaying = false al suo interno) li fermiamo.
+                syncKeepAlive(false);
                 handleTrackEnded();
-                if (!appState.intendedPlaying) {
-                    updateMediaSessionState(false);
-                    syncKeepAlive(false);
-                }
             }
             // BUFFERING (3), UNSTARTED (-1), CUED (5): nessuna modifica all'icona.
         }
@@ -4095,15 +4010,6 @@
                 swipeTitle.style.opacity = '1';
                 return;
             }
-            // Silenzia SUBITO, non tra 200ms: loadTrack() (chiamata sotto, dentro il
-            // setTimeout dell'animazione) fa già mute+pausa del brano uscente, ma qui lo
-            // swipe viene confermato con largo anticipo rispetto a quella chiamata - per
-            // tutta la durata dell'animazione del titolo il vecchio brano continuava a
-            // suonare tranquillamente in sottofondo, ed era quello il "pezzo di canzone
-            // precedente" che si sentiva ancora dopo il cambio.
-            clearInterval(volumeRampTimer);
-            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
-            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
             swipeTitle.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out';
             swipeTitle.style.transform = `translate3d(${direction === 'right' ? '100%' : '-100%'}, 0, 0)`;
             swipeTitle.style.opacity = '0';
@@ -5222,40 +5128,21 @@
         async function loadTrack(index, sourceTracks = appState.tracks) {
             if (index < 0 || index >= sourceTracks.length) return;
 
-            // Ogni chiamata a loadTrack() (tap su un brano, avanti/indietro, autoadvance a
-            // fine canzone) è sempre una richiesta di riproduzione: lo segnaliamo SUBITO,
-            // prima ancora del pauseVideo() qui sotto che azzererà temporaneamente
-            // appState.isPlaying. Così il watchdog resta attivo durante tutta la
-            // transizione e può recuperare un eventuale stallo nel caricamento del nuovo
-            // video (tipico con schermo spento su Android Auto).
-            appState.intendedPlaying = true;
-
-            // Silenziamo il player SUBITO, come prima cosa in assoluto: prima ancora di
-            // toccare qualunque DOM/stato. Il tick/bleed-through del brano precedente non
-            // veniva dal solo swap di loadVideoById() più avanti, ma anche dal tempo che
-            // passava tra "l'utente ha cambiato brano" e il punto (più in basso, dopo
-            // parecchio lavoro sincrono) in cui il player veniva effettivamente zittito:
-            // in quella finestra il vecchio audio continuava tranquillamente. Mutando qui,
-            // in cima, quella finestra si azzera quasi del tutto.
-            clearInterval(volumeRampTimer);
-            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
-            // Fermiamo subito anche la decodifica del vecchio video (non solo il volume):
-            // ora che tutta questa fase è comunque coperta dal mute qui sopra, possiamo
-            // farlo sempre (non solo quando l'id del nuovo brano è sconosciuto) senza più
-            // rischiare il tick da comandi accavallati che ci aveva fatto evitare questa
-            // chiamata in passato - è proprio quel "vecchio audio ancora in coda" a
-            // ricomparire per una frazione di secondo quando riattiviamo l'audio più tardi.
-            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
-
             const track = sourceTracks[index];
             // Vero solo se la coda che stiamo caricando è anche quella attualmente mostrata a
             // schermo: solo in quel caso ha senso toccare appState.currentIndex e le righe DOM
             // della lista (altrimenti apparterrebbero a una lista diversa, sfogliata dopo).
             const isBrowsingListPlaying = (sourceTracks === appState.tracks);
 
-            // Il fermo del brano uscente ora avviene già in cima alla funzione (mute +
-            // pauseVideo), prima ancora di questo punto: qui restava solo il reset dello
-            // stato "non disponibile", che deve comunque avvenire per ogni nuovo brano.
+            // Ferma SUBITO l'audio del brano uscente: se il nuovo brano ha già un id
+            // YouTube, loadVideoById() poco sotto lo sostituirà comunque all'istante,
+            // ma quando serve prima risolvere l'id (brano Spotify mai ascoltato,
+            // richiesta di rete) il vecchio video altrimenti continuerebbe a suonare
+            // in sottofondo per tutta l'attesa. Pausa subito, poi si riparte pulito
+            // con il nuovo brano quando è pronto.
+            if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
+            // Nuovo brano in caricamento: finché non sappiamo se ha davvero un video
+            // riproducibile, il tasto play non deve poter riprendere quello vecchio.
             nowPlayingUnavailable = false;
 
             // CARICAMENTO SUCESSIVO PREVENTIVO ED ESCLUSIVO (solo per liste da ricerca YouTube,
@@ -5382,13 +5269,7 @@
                     // precedente): lo fermiamo del tutto e blocchiamo il tasto play finché
                     // non si sceglie un altro brano.
                     nowPlayingUnavailable = true;
-                    appState.intendedPlaying = false;
                     if (player?.stopVideo) { try { player.stopVideo(); } catch (e) {} }
-                    // Nessun video partirà per questo brano: il mute applicato in cima alla
-                    // funzione va tolto comunque (onPlayerStateChange non vedrà mai PLAYING
-                    // per un id che non esiste più, quindi non lo farebbe da sé).
-                    pendingUnmuteForVideoId = null;
-                    if (player?.setVolume) { try { player.setVolume(Number(document.getElementById('volumeSlider')?.value || 100)); } catch (e) {} }
                     appState.isPlaying = false;
                     setPlayIconState(false);
                     return;
@@ -5413,15 +5294,6 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
-            // Reset dello stato di upgrade qualità (vedi scheduleQualityUpgrade): il
-            // brano precedente potrebbe aver già alzato la propria qualità o avere un
-            // timer ancora in sospeso, nessuno dei due vale per questo nuovo brano.
-            clearTimeout(qualityUpgradeTimer);
-            qualityUpgradedVideoId = null;
-            // Il volume a 0 è già stato applicato in cima alla funzione: qui lo confermiamo
-            // (non costa nulla se è già a 0) e segniamo per quale video partirà la rampa più avanti.
-            if (player?.setVolume) { try { player.setVolume(0); } catch (e) {} }
-            pendingUnmuteForVideoId = track.id || null;
             if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
             updateMediaSessionMetadata(track);
 
@@ -5533,10 +5405,8 @@
             // caricato nell'iframe, cioè il brano precedente.
             if (nowPlayingUnavailable) return;
             if (appState.isPlaying) {
-                appState.intendedPlaying = false;
                 player.pauseVideo();
             } else {
-                appState.intendedPlaying = true;
                 player.playVideo();
                 // Copre il caso del brano ripristinato all'avvio (restoreLastPlayback):
                 // quello non passa da loadTrack(), quindi è qui che va registrato "Canzoni"
@@ -5628,11 +5498,6 @@
         function setSleepTimer(minutes) {
             if (sleepTimerHandle) clearTimeout(sleepTimerHandle);
             sleepTimerHandle = setTimeout(() => {
-                // Va segnalato come pausa "voluta" PRIMA di pauseVideo(), altrimenti col
-                // nuovo controllo su intendedPlaying in onPlayerStateChange (vedi PAUSED)
-                // il keep-alive resterebbe attivo pensando che sia solo una pausa di
-                // transizione tra un brano e l'altro.
-                appState.intendedPlaying = false;
                 if (player?.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
                 sleepTimerHandle = null;
                 updateSleepTimerButtonUI();
@@ -5669,96 +5534,8 @@
                 loadTrack(0, nowPlayingTracks);
             }
             // Repeat spento: non si fa nulla, la riproduzione resta ferma sull'ultimo brano
-            // (icona già impostata su "play" da onPlayerStateChange). Qui la riproduzione
-            // si ferma davvero e volontariamente (fine coda, non un blocco da recuperare):
-            // disattiviamo intendedPlaying, altrimenti il watchdog crederebbe ancora che
-            // l'utente voglia sentire qualcosa.
-            appState.intendedPlaying = false;
+            // (icona già impostata su "play" da onPlayerStateChange).
         }
-
-        // Watchdog anti-stop in background: quando la app va in background (schermo
-        // spento, app minimizzata, tab non visibile) Chrome/Android e Safari/iOS a
-        // volte mettono comunque in pausa l'audio "keep-alive" nonostante il loop,
-        // oppure sospendono per un istante l'iframe YouTube per throttling. Appena
-        // questo succede il player smette di suonare e non riparte da solo.
-        // Questo watchdog controlla ogni 3 secondi: se dovremmo star suonando
-        // (appState.isPlaying true) ma l'audio keep-alive o il player YouTube
-        // risultano fermi, li fa ripartire senza intervento dell'utente.
-        // Da quanti cicli consecutivi (3s l'uno) il player risulta fermo in BUFFERING (3)
-        // sullo stesso video: se supera la soglia, non è un semplice buffering lento ma
-        // uno stallo vero e proprio (tipico quando la rete/i timer vengono limitati con
-        // schermo spento su Android Auto) e va forzato un nuovo tentativo di caricamento.
-        let stuckBufferingTicks = 0;
-        let stuckBufferingVideoId = null;
-
-        function startBackgroundWatchdog() {
-            setInterval(() => {
-                // Usiamo intendedPlaying (volontà dell'utente) e non isPlaying (stato
-                // istantaneo del player): isPlaying va a false anche solo per il breve
-                // pauseVideo() di transizione tra un brano e l'altro, o mentre il nuovo
-                // video è ancora in buffering - è esattamente in quei momenti che il
-                // watchdog deve restare attivo per poter intervenire.
-                if (!appState.intendedPlaying) { stuckBufferingTicks = 0; return; }
-                const ka = document.getElementById('keepAliveAudio');
-                if (ka && ka.paused) {
-                    ka.play().catch(() => {});
-                }
-                if (player && player.getPlayerState && typeof player.getPlayerState === 'function') {
-                    const state = player.getPlayerState();
-                    const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
-                    // 2 = PAUSED, -1 = UNSTARTED, 5 = CUED: se il browser ha messo in pausa il
-                    // player da solo mentre l'utente si aspettava ancora la riproduzione,
-                    // lo rimettiamo in play. Il caso CUED è quello del repeat/autoadvance a
-                    // schermo spento (Android Auto): loadVideoById() carica il video ma
-                    // l'autoplay interno viene bloccato dal browser in background, e il
-                    // player resta fermo su "caricato ma non partito" senza mai passare da
-                    // BUFFERING (quindi il ramo qui sotto non lo intercetterebbe) né da
-                    // PAUSED/UNSTARTED (quindi andava aggiunto qui esplicitamente).
-                    if (state === 2 || state === -1 || state === 5) {
-                        stuckBufferingTicks = 0;
-                        try { player.playVideo(); } catch (err) {}
-                        return;
-                    }
-                    // 3 = BUFFERING: normale per qualche secondo, ma se persiste sullo
-                    // stesso video per troppi cicli il caricamento è bloccato (non basta
-                    // playVideo(), va ricaricato il video da capo).
-                    if (state === 3 && activeVideoId) {
-                        if (activeVideoId === stuckBufferingVideoId) {
-                            stuckBufferingTicks++;
-                        } else {
-                            stuckBufferingVideoId = activeVideoId;
-                            stuckBufferingTicks = 1;
-                        }
-                        if (stuckBufferingTicks >= 4) { // ~12 secondi bloccato sullo stesso video
-                            stuckBufferingTicks = 0;
-                            try { player.loadVideoById({ videoId: activeVideoId, suggestedQuality: 'small' }); } catch (err) {}
-                        }
-                        return;
-                    }
-                    stuckBufferingTicks = 0;
-                }
-            }, 3000);
-        }
-
-        // Quando la pagina torna visibile (utente rientra nell'app dopo averla lasciata
-        // in background) verifichiamo subito lo stato reale, senza aspettare il primo
-        // giro del watchdog: dà una sensazione di ripresa istantanea.
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState !== 'visible') return;
-            if (!appState.intendedPlaying) return;
-            const ka = document.getElementById('keepAliveAudio');
-            if (ka && ka.paused) ka.play().catch(() => {});
-            if (player && player.getPlayerState) {
-                const state = player.getPlayerState();
-                // Stesso motivo del watchdog qui sopra: anche rientrando nell'app va
-                // recuperato lo stato CUED (5), non solo PAUSED/UNSTARTED.
-                if (state === 2 || state === -1 || state === 5) {
-                    try { player.playVideo(); } catch (err) {}
-                }
-            }
-            updateMediaSessionState(appState.isPlaying);
-            updateMediaSessionPosition();
-        });
 
         function startProgressLoop() {
             setInterval(() => {

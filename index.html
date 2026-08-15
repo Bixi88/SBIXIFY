@@ -2142,14 +2142,14 @@
                     const deltaY = e.changedTouches[0].clientY - startY;
                     if (Math.abs(deltaX) <= Math.abs(deltaY) * DIRECTION_RATIO) return;
 
-                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0 && nowPlayingListKey && currentLoadedKey === nowPlayingListKey) {
+                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0 && nowPlayingListType === 'spotify' && nowPlayingListKey && currentLoadedKey === nowPlayingListKey) {
                         // Swipe sinistra: riapre la lista canzoni della playlist attiva.
-                        // Permesso solo se il brano in ascolto ora appartiene DAVVERO alla
-                        // lista caricata in appState.tracks (stesso listKey): un Recente
-                        // aperto senza playlist (nowPlayingListKey nullo) non ha nessuna
-                        // lista a cui tornare, quindi lo swipe non deve fare nulla invece
-                        // di riaprire una lista sfogliata in passato e ormai scollegata
-                        // da ciò che sta suonando.
+                        // Permesso solo se il brano in ascolto ora appartiene DAVVERO a una
+                        // playlist Spotify (non una semplice ricerca YouTube) ed è la stessa
+                        // già caricata in appState.tracks (stesso listKey): un Recente aperto
+                        // senza playlist non ha nessuna lista a cui tornare, quindi lo swipe
+                        // non deve fare nulla invece di riaprire una lista sfogliata in
+                        // passato e ormai scollegata da ciò che sta suonando.
                         hapticFeedback();
                         showResultsView();
                     } else if (deltaX > SWIPE_THRESHOLD) {
@@ -3879,6 +3879,21 @@
                     const tracks = cached.tracks.map(t => ({ ...t }));
                     let idx = tracks.findIndex(t => t.id === item.id);
                     if (idx === -1) idx = 0;
+
+                    // Agganciamo SUBITO anche la vista Risultati alla playlist intera (stesso
+                    // array della coda), non solo la riproduzione: così, tornando alla Home,
+                    // lo swipe-back trova la lista canzoni già pronta e la apre subito, senza
+                    // dover prima riaprire la playlist per "ricollegarla".
+                    currentListSource = 'spotify';
+                    appState.tracks = tracks;
+                    appState.currentIndex = idx;
+                    currentLoadedKey = item.listKey;
+                    currentLoadedTitle = item.listTitle || cached.name || '';
+                    const resultsTitleEl = document.getElementById('resultsTitle');
+                    if (resultsTitleEl) resultsTitleEl.textContent = currentLoadedTitle;
+                    renderTracklist(0);
+                    updateRefreshPlaylistBtn(url);
+
                     loadTrack(idx, tracks);
                     openNowPlayingSheetWhenArtworkReady();
                     return;
@@ -4973,6 +4988,13 @@
             // causando il "flash" di tutti i tile (immagini comprese).
             if (fromIndex === 0) {
                 trackListDiv.innerHTML = '';
+                // Una nuova lista (nuova ricerca o nuova playlist) riparte SEMPRE dalla
+                // cima: senza questo reset, lo scroll restava fermo alla posizione
+                // lasciata dalla lista precedente (es. sceso di qualche riga sfogliando
+                // i risultati di prima), facendo sembrare che i primi 5-6 brani mancassero
+                // finché non si risaliva a mano.
+                const resultsScrollEl = document.getElementById('resultsView');
+                if (resultsScrollEl) resultsScrollEl.scrollTop = 0;
             }
 
             if (appState.tracks.length === 0) {

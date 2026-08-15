@@ -1068,12 +1068,17 @@
                 var(--immersive-color-90) 75%,
                 var(--immersive-color) 80%,
                 var(--immersive-color) 100%);
-            transition: opacity 0.25s ease;
+            transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        html.immersive #immersiveBgImg { transition: opacity 0.25s ease; }
+        html.immersive #immersiveBgImg { transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1); }
         /* Testi aperti: l'artwork (immagine + sfumatura) sparisce del tutto e resta solo il
            colore pieno impostato su #nowPlayingSheet stesso, che così copre l'intero schermo
-           in modo uniforme dietro al pannello dei testi - non solo dietro al suo riquadro. */
+           in modo uniforme dietro al pannello dei testi - non solo dietro al suo riquadro.
+           La transizione qui sopra (0.38s, stessa cubic-bezier del pannello lyrics/vinile
+           in #vinylSlide e #lyricsPanel) è impostata apposta identica a quella dello swipe:
+           prima erano due durate/curve diverse (0.25s ease qui, 0.38s cubic-bezier lì),
+           quindi lo sfondo spariva "di scatto" rispetto allo scorrimento del pannello,
+           risultando incoerente. Ora sfumano via alla stessa velocità, nello stesso istante. */
         html.immersive #nowPlayingSheet.lyrics-open #immersiveBgImg,
         html.immersive #nowPlayingSheet.lyrics-open #immersiveBg::after {
             opacity: 0;
@@ -2550,6 +2555,7 @@
             }
             function setTheme(theme) {
                 if (theme !== 'walkman' && theme !== 'immersive') theme = 'moderna';
+                const wasImmersive = document.documentElement.classList.contains('immersive');
                 document.documentElement.classList.remove('walkman', 'immersive');
                 if (theme !== 'moderna') document.documentElement.classList.add(theme);
                 applyWalkmanIcons(theme === 'walkman');
@@ -2558,6 +2564,26 @@
                 if (theme === 'immersive' && window.sbixifyApplyImmersiveArtwork) {
                     const currentSrc = document.getElementById('sheetArtworkImg')?.src;
                     if (currentSrc) window.sbixifyApplyImmersiveArtwork(currentSrc);
+                }
+                // Si esce da "Immersive" verso un'altra skin: la riga "Rotazione vinile" era
+                // rimasta nascosta (display:none via CSS) per tutto il tempo in cui Immersive
+                // era attiva, quindi il suo cursore era stato posizionato/dimensionato a
+                // larghezza zero (offsetWidth di un elemento display:none è sempre 0) - risultato
+                // visibile come cursore disallineato in Impostazioni una volta tornato visibile.
+                // Stesso discorso per l'animazione di rotazione del vinile: partita/aggiornata
+                // mentre l'elemento non era renderizzato, può restare "congelata" anche dopo che
+                // torna visibile. Qui si ricalcola tutto non appena il layout torna disponibile,
+                // non solo al primo avvio della pagina.
+                if (wasImmersive && theme !== 'immersive') {
+                    requestAnimationFrame(() => {
+                        const activeVinylOpt = vinylOptEls.find(opt => opt.classList.contains('active'));
+                        if (activeVinylOpt) positionVinylThumb(activeVinylOpt, false);
+                        if (sheetArtworkImgEl && sheetArtworkImgEl.classList.contains('vinyl-rotate')) {
+                            sheetArtworkImgEl.classList.remove('vinyl-rotate');
+                            void sheetArtworkImgEl.offsetWidth;
+                            sheetArtworkImgEl.classList.add('vinyl-rotate');
+                        }
+                    });
                 }
                 updateMetaThemeColor(theme);
                 const activeOpt = themeOptEls.find(opt => opt.dataset.theme === theme);

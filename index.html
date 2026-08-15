@@ -58,7 +58,7 @@
                usata per evidenziare la riga del brano in ascolto in home/lista canzoni
                (vedi .track-row.playing/.home-track-row.playing più sotto), calcolata in
                updateImmersiveColorFromArtwork insieme al testo di contrasto giusto. */
-            --immersive-accent: #3A3A42;
+            --immersive-accent: #46464F;
             --immersive-accent-text: #ffffff;
         }
 
@@ -1003,23 +1003,34 @@
            brano in riproduzione (vedi updateImmersiveColorFromArtwork in JS, che scrive il
            risultato in --immersive-color). La modalità vinile è disattivata: l'artwork grande
            non ruota più in un cerchio, diventa invece lo sfondo stesso della schermata. */
+        /* Base = colore PIÙ SCURO dell'artwork in ascolto (--immersive-color, calcolato in
+           updateImmersiveColorFromArtwork), non più un nero fisso: home, lista canzoni,
+           impostazioni e ogni altra schermata seguono così la tonalità del brano corrente,
+           esattamente come Now Playing sheet/lyrics/mini player. Referenziando la var invece
+           di un valore statico, il fallback (finché nessun brano è stato ancora ascoltato)
+           resta comunque quello di sempre - vedi --immersive-color in :root più sopra - e
+           passando a un'altra skin questi due valori tornano da soli a quelli statici di
+           Moderna/Walkman (la regola sotto smette semplicemente di applicarsi), senza dover
+           "ripulire" nulla via JS. */
         html.immersive {
-            --bg-main: #0B0B0E;
-            --bg-gradient-top: #0B0B0E;
+            --bg-main: var(--immersive-color);
+            --bg-gradient-top: var(--immersive-color);
             --bg-card: #131316;
             --bg-input: #17171B;
             --accent: #FFFFFF;
             --text-main: #FFFFFF;
             --text-muted: rgba(255, 255, 255, 0.6);
         }
-        /* Cornici delle artwork: stesso bianco morbido di Walkman, ma senza forzare la
-           forma circolare (qui le copertine restano squircle come nel tema Moderna). */
+        /* Cornici delle artwork: colore "accento" (--immersive-accent, variante più
+           luminosa/satura dello stesso colore dominante, calcolata insieme a
+           --immersive-color - vedi updateImmersiveColorFromArtwork), non più un bianco
+           fisso: così anche le cornici seguono la tonalità del brano in ascolto. */
         html.immersive .qcard .circle,
         html.immersive .settings-playlist-thumb,
         html.immersive #miniPlayerImgFrame,
         html.immersive #sheetArtworkFrame,
         html.immersive .track-thumb-wrap {
-            border-color: rgba(255, 255, 255, 0.55) !important;
+            border-color: var(--immersive-accent) !important;
         }
         /* La rotazione vinile non ha senso in questa skin (l'artwork non è più un disco
            rotondo ma lo sfondo pieno-schermo): l'intera riga di impostazione va nascosta. */
@@ -1078,7 +1089,7 @@
             position: absolute;
             inset: 0;
             z-index: 5;
-            background: var(--immersive-color);
+            background: var(--immersive-accent);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1137,13 +1148,22 @@
         html.immersive #playPauseBtn { box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
         html.immersive #sheetArtworkGlow, html.immersive #sheetArtworkShadow { display: none; }
 
-        /* ---- Schermata lyrics: sempre il colore dominante come sfondo, testo sempre bianco ---- */
+        /* ---- Schermata lyrics: colore "accento" come sfondo (stesso usato per mini player
+           e cornici, vedi sopra), testo nero o bianco a seconda di quanto risulta chiaro
+           quell'accento (--immersive-accent-text, calcolato insieme al colore) - così resta
+           leggibile anche su copertine chiare, non solo bianco fisso su sfondo sempre scuro. */
         html.immersive #lyricsPanel {
-            background: var(--immersive-color);
+            background: var(--immersive-accent);
             border-radius: 22px;
         }
-        html.immersive .lyrics-line { color: rgba(255, 255, 255, 0.5); }
-        html.immersive .lyrics-line.active { color: #fff; }
+        html.immersive .lyrics-line {
+            color: var(--immersive-accent-text);
+            opacity: 0.5;
+        }
+        html.immersive .lyrics-line.active {
+            color: var(--immersive-accent-text);
+            opacity: 1;
+        }
 
         /* ---- Mini player: un solo colore pieno (lo stesso dominante della Now Playing
            sheet), niente immagine di sfondo, UI sempre bianca sopra. NIENTE "position:
@@ -1154,9 +1174,26 @@
            quindi non serve altro perché backdrop-filter/overflow funzionino. */
         html.immersive #miniPlayer {
             overflow: hidden;
-            background: var(--immersive-color) !important;
+            background: var(--immersive-accent) !important;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
+        }
+        /* Testo e barra di avanzamento del mini player: nero o bianco a seconda di quanto
+           risulta chiaro l'accento (--immersive-accent-text) - il suo sfondo non è più
+           sempre scuro come prima (era --immersive-color), quindi il testo deve adattarsi
+           per restare leggibile anche su copertine chiare. */
+        html.immersive #miniPlayerTitle,
+        html.immersive #miniPlayerChannel,
+        html.immersive #miniProgressBarArea {
+            color: var(--immersive-accent-text) !important;
+        }
+        html.immersive #miniProgressBarContainer > div:first-child {
+            background: var(--immersive-accent-text) !important;
+            opacity: 0.22;
+        }
+        html.immersive #miniProgressBar {
+            background: var(--immersive-accent-text) !important;
+            opacity: 0.85;
         }
 
         /* ---- Home "Canzoni" e lista tracce: riga del brano in ascolto evidenziata con
@@ -1931,7 +1968,7 @@
                         // e leggibile invece di confondersi con lo sfondo scuro della skin.
                         let vr = rawR, vg = rawG, vb = rawB;
                         const vLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
-                        const minVividLum = 70, maxVividLum = 200;
+                        const minVividLum = 90, maxVividLum = 215;
                         if (vLum > 0 && vLum < minVividLum) {
                             const factor = Math.min(minVividLum / vLum, 10);
                             vr = Math.min(255, Math.round(vr * factor));
@@ -1964,7 +2001,7 @@
             applyImmersiveArtwork(url);
             extractDominantDarkColor(url, (r, g, b, vr, vg, vb) => {
                 // Fallback se l'estrazione fallisce (CORS, immagine non ancora pronta, ecc.).
-                if (r == null) { r = 11; g = 11; b = 14; vr = 58; vg = 58; vb = 66; }
+                if (r == null) { r = 11; g = 11; b = 14; vr = 76; vg = 76; vb = 86; }
                 const root = document.documentElement.style;
                 root.setProperty('--immersive-color', `rgb(${r},${g},${b})`);
                 // Varianti dello stesso colore a diverse opacità: servono alla sfumatura

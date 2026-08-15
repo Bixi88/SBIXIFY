@@ -1786,16 +1786,13 @@
         }
 
         // --- UPGRADE AUTOMATICO DELLA QUALITÀ DOPO L'AVVIO ---
-        // loadVideoById parte sempre con suggestedQuality:'small' per bufferizzare il
-        // minimo indispensabile e far partire l'audio il prima possibile. Una volta che
-        // il brano sta effettivamente suonando, però, non c'è più motivo di restare
-        // sulla qualità più bassa: alziamo automaticamente al massimo disponibile, ma
-        // non nell'istante esatto in cui parte (rischierebbe di causare un secondo
-        // micro-stallo proprio mentre l'utente sta ancora sentendo il primo attacco del
-        // brano) - aspettiamo qualche secondo che la riproduzione si sia stabilizzata.
-        // NB: setPlaybackQuality è "best-effort" - dai tempi dello streaming adattivo,
-        // YouTube spesso lo tratta come un suggerimento e non una scelta vincolante, ma è
-        // comunque l'unica leva che l'IFrame API espone.
+        // TEST TEMPORANEO: loadVideoById ora parte direttamente con
+        // suggestedQuality:'hd1080' invece di 'small', per misurare se l'avvio ad
+        // alta risoluzione causa stalli percepibili o è gestibile senza problemi.
+        // Se il test va male, basta rimettere 'small' nei 3 punti sopra elencati
+        // (cueVideoById x2, loadVideoById x1) per tornare al comportamento originale.
+        // La logica di upgrade automatico qui sotto resta invariata e ora è
+        // sostanzialmente un no-op (il livello è già alto dall'inizio).
         let qualityUpgradeTimer = null;
         let qualityUpgradedVideoId = null;
 
@@ -1833,7 +1830,7 @@
             // YouTube è più lenta del DOMContentLoaded) e aveva un brano pronto da
             // "caricare in pausa", lo facciamo solo ora che il player esiste davvero.
             if (pendingCueTrackId) {
-                try { player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'small' }); } catch (err) {}
+                try { player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' }); } catch (err) {}
                 pendingCueTrackId = null;
             }
         }
@@ -3458,7 +3455,7 @@
 
             if (track.id) {
                 if (player?.cueVideoById) {
-                    try { player.cueVideoById({ videoId: track.id, suggestedQuality: 'small' }); } catch (err) {}
+                    try { player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); } catch (err) {}
                 } else {
                     pendingCueTrackId = track.id;
                 }
@@ -5401,7 +5398,7 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
-            if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'small' });
+            if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
             updateMediaSessionMetadata(track);
 
             // Ricordiamo il brano e la playlist/ricerca in ascolto: alla prossima apertura

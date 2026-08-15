@@ -1038,28 +1038,21 @@
             height: 80%;
             object-fit: cover;
         }
-        /* Sfumatura in due parti, entrambe nel colore dinamico (non più nero) per
-           unificare header e artwork nello stesso "mood" cromatico del brano, esattamente
-           come nella reference (che scurisce sempre verso il proprio colore, mai verso un
-           nero neutro che stonerebbe con la tonalità dell'artwork):
-           1) In alto, una riga piena nel colore dominante (0-6%) che fa da sfondo a
-              "In riproduzione"/nome playlist, poi si dissolve rapidamente verso l'artwork
-              (fino al 22%) lasciandolo pulito e leggibile.
-           2) Verso il basso, una copertura lunga e graduale (dal 34% all'80%) che scurisce
-              progressivamente usando le varianti a opacità crescente dello stesso colore
-              dominante (--immersive-color-15/35/55/75/90, calcolate in JS in
-              updateImmersiveColorFromArtwork) invece di rgba(0,0,0,...): niente più nero
-              neutro, la tonalità del brano resta coerente per tutta la sfumatura. Rivela il
-              colore pieno esattamente dove finisce l'immagine (80%), senza cuciture. Niente
-              color-mix() (vedi nota già presente prima): solo rgba()/var() dirette. */
+        /* Sfumatura SOLO in basso (non più in alto: l'header lì non ha più testo da
+           proteggere, tolto nella richiesta precedente). Resta trasparente per la prima
+           parte dell'artwork, poi scurisce progressivamente verso il basso usando le
+           varianti a opacità crescente del colore dominante (--immersive-color-15/35/
+           55/75/90, calcolate in JS in updateImmersiveColorFromArtwork) invece di
+           rgba(0,0,0,...): la tonalità del brano resta coerente per tutta la sfumatura.
+           Rivela il colore pieno esattamente dove finisce l'immagine (80%), senza
+           cuciture. Niente color-mix() (vedi nota già presente prima): solo rgba()/var()
+           dirette. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
-                var(--immersive-color) 0%,
-                var(--immersive-color) 6%,
-                rgba(0,0,0,0) 22%,
+                rgba(0,0,0,0) 0%,
                 rgba(0,0,0,0) 34%,
                 var(--immersive-color-15) 44%,
                 var(--immersive-color-35) 52%,
@@ -1095,6 +1088,32 @@
         html.immersive #nowPlayingSheet .custom-text-muted {
             color: #fff !important;
         }
+        /* ---- Header ridotto: solo il pulsante download (skin Immersive) ----
+           Niente più "In Riproduzione"/nome playlist né freccia di chiusura in alto: la
+           chiusura resta comunque disponibile via swipe verso il basso su
+           #sheetSwipeCloseArea/#sheetHeaderDrag, già presente per tutte le skin. Il nome
+           della playlist si sposta sotto l'artista (vedi #immersivePlaylistBtn più sotto). */
+        html.immersive #closeSheetBtn,
+        html.immersive #sheetHeaderEyebrow,
+        html.immersive #sheetHeaderPlaylistName {
+            display: none !important;
+        }
+        html.immersive #sheetHeaderRow { justify-content: flex-end; }
+        /* ---- Nome playlist sotto l'artista (skin Immersive) ----
+           Nascosto di default in tutte le skin (solo Immersive lo mostra, e solo quando
+           il brano viene davvero da una playlist: la classe "visible" arriva da
+           updateNowPlayingHeaderLabel in JS, stessa logica già usata per
+           #sheetHeaderPlaylistName). */
+        #immersivePlaylistBtn { display: none; }
+        html.immersive #immersivePlaylistBtn.visible {
+            display: inline-block;
+            color: rgba(255, 255, 255, 0.75) !important;
+        }
+        html.immersive #immersivePlaylistBtn.visible:active { color: #fff !important; }
+        /* Altezze ricalibrate: con la riga playlist in più sotto l'artista, il blocco
+           titolo/artista/playlist ha bisogno di un filo meno margine sotto rispetto alle
+           altre skin (altrimenti la terza riga spinge troppo giù i controlli). */
+        html.immersive #trackInfoBlock { margin-bottom: 14px; }
         html.immersive #repeatBtn, html.immersive #sleepTimerBtn,
         html.immersive #prevBtn, html.immersive #nextBtn {
             color: rgba(255, 255, 255, 0.72) !important;
@@ -1517,7 +1536,7 @@
 
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
             <div id="sheetHeaderDrag" class="w-full flex flex-col items-center py-2 shrink-0 cursor-pointer pointer-events-auto">
-                <div class="flex items-center justify-between w-full px-1">
+                <div id="sheetHeaderRow" class="flex items-center justify-between w-full px-1">
                     <button id="closeSheetBtn" class="text-neutral-300 hover:text-white p-2 text-[19px] active:scale-90 transition-transform">
                         <i class="fa-solid fa-chevron-down"></i>
                     </button>
@@ -1572,7 +1591,7 @@
 
             <!-- Area Controlli Inferiore -->
             <div class="w-full max-w-sm mx-auto shrink-0 pointer-events-auto">
-                <div class="w-full text-left mb-5" style="overflow-x: hidden;">
+                <div id="trackInfoBlock" class="w-full text-left mb-5" style="overflow-x: hidden;">
                     <div id="swipeTitleContainer" class="w-full py-1 cursor-grab active:cursor-grabbing select-none" style="touch-action: none;">
                         <div class="marquee-wrapper">
                             <div id="marqueeContent" class="marquee-content font-bold">
@@ -1581,6 +1600,15 @@
                         </div>
                     </div>
                     <p id="playerTrackChannel" class="text-[14px] mt-1 font-semibold custom-text-muted"></p>
+                    <!-- Solo skin Immersive: nome playlist spostato qui sotto l'artista
+                         (invece che nell'header in alto, ora ridotto al solo pulsante
+                         download - vedi #sheetHeaderRow). Stesso comportamento tap già
+                         esistente (openNowPlayingPlaylist): riporta alla lista canzoni
+                         della playlist da cui viene il brano. Nascosto di default
+                         (.visible aggiunta via JS in updateNowPlayingHeaderLabel, solo
+                         quando il brano viene davvero da una playlist), e comunque
+                         invisibile fuori dalla skin Immersive (vedi CSS). -->
+                    <button id="immersivePlaylistBtn" type="button" class="text-[13px] font-bold mt-1 text-left bg-transparent border-0 p-0 cursor-pointer"></button>
                 </div>
 
                 <div class="flex items-center justify-between text-[11px] mb-2 custom-text-muted font-mono px-1">
@@ -1843,10 +1871,12 @@
                             const parts = bestKey.split(',').map(n => parseInt(n, 10) * 16 + 8);
                             r = parts[0]; g = parts[1]; b = parts[2];
                         }
-                        // Scurisce mantenendo la tonalità: se la luminanza supera la soglia,
-                        // scala tutti e tre i canali dello stesso fattore.
+                        // Scurisce mantenendo la tonalità: scala sempre verso il basso se
+                        // supera la soglia. Soglia bassa apposta (non solo "se troppo
+                        // chiaro"): così il colore resta sempre scuro come nella
+                        // reference, anche partendo da un artwork dai colori vivaci.
                         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                        const maxLum = 68;
+                        const maxLum = 30;
                         if (lum > maxLum) {
                             const factor = maxLum / lum;
                             r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);
@@ -2409,6 +2439,9 @@
 
             document.getElementById('sheetDownloadBtn').addEventListener('click', redirectToDownload);
             document.getElementById('sheetHeaderCenter')?.addEventListener('click', openNowPlayingPlaylist);
+            // Skin Immersive: stesso comportamento tap del pulsante in alto, ma dal
+            // pulsante spostato sotto l'artista (vedi updateNowPlayingHeaderLabel).
+            document.getElementById('immersivePlaylistBtn')?.addEventListener('click', openNowPlayingPlaylist);
             document.getElementById('volumeSlider')?.addEventListener('input', (e) => player?.setVolume(e.target.value));
             
             progressBarContainer.addEventListener('mousedown', startScrub);
@@ -4292,6 +4325,10 @@
             const center = document.getElementById('sheetHeaderCenter');
             const eyebrow = document.getElementById('sheetHeaderEyebrow');
             const nameEl = document.getElementById('sheetHeaderPlaylistName');
+            // Skin Immersive: stesso nome/stato "cliccabile", mostrato invece sotto
+            // l'artista (vedi CSS #immersivePlaylistBtn). Tenuto sincronizzato qui
+            // insieme all'etichetta originale così non serve duplicare la logica.
+            const immersiveBtn = document.getElementById('immersivePlaylistBtn');
             if (!center || !eyebrow || !nameEl) return;
 
             if (nowPlayingListType === 'spotify' && nowPlayingListKey && nowPlayingListTitle) {
@@ -4300,12 +4337,20 @@
                 nameEl.classList.remove('hidden');
                 center.classList.add('cursor-pointer');
                 center.dataset.clickable = 'true';
+                if (immersiveBtn) {
+                    immersiveBtn.textContent = nowPlayingListTitle;
+                    immersiveBtn.classList.add('visible');
+                }
             } else {
                 eyebrow.textContent = 'In Riproduzione';
                 nameEl.textContent = '';
                 nameEl.classList.add('hidden');
                 center.classList.remove('cursor-pointer');
                 center.dataset.clickable = 'false';
+                if (immersiveBtn) {
+                    immersiveBtn.textContent = '';
+                    immersiveBtn.classList.remove('visible');
+                }
             }
         }
 

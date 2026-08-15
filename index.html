@@ -3859,6 +3859,26 @@
             nowPlayingListType = item.listType || null;
             nowPlayingListKey = item.listKey || null;
             nowPlayingListTitle = item.listTitle || '';
+
+            // Se il brano viene da una playlist Spotify, la coda di riproduzione dev'essere
+            // la playlist VERA (presa dalla cache locale), non una copia isolata a un solo
+            // brano: altrimenti avanti/indietro nella Now Playing Sheet non hanno altri brani
+            // a cui passare e ripartono sempre sullo stesso, e la riga evidenziata come "in
+            // riproduzione" dentro la playlist (tappando "Riproduzione da Playlist: <nome>")
+            // resta disallineata da quella indice-0 dell'unico brano effettivamente in coda.
+            if (item.listType === 'spotify' && item.listKey && item.listKey.startsWith('playlist:')) {
+                const url = item.listKey.slice('playlist:'.length);
+                const cached = getCachedPlaylistTracks(url);
+                if (cached && cached.tracks && cached.tracks.length) {
+                    const tracks = cached.tracks.map(t => ({ ...t }));
+                    let idx = tracks.findIndex(t => t.id === item.id);
+                    if (idx === -1) idx = 0;
+                    loadTrack(idx, tracks);
+                    openNowPlayingSheetWhenArtworkReady();
+                    return;
+                }
+            }
+
             loadTrack(0, [{ ...item }]);
             openNowPlayingSheetWhenArtworkReady();
         }
@@ -4351,11 +4371,25 @@
                 nextSearchPageToken = '';
                 appState.tracks = cachedPlaylist.tracks.map(t => ({ ...t }));
                 appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cachedPlaylist.name;
+                // Se il brano in ascolto in questo momento appartiene proprio a questa
+                // playlist (es. aperta da un Recente con la sua coda intera, vedi
+                // openRecentTrack), riallinea qui la coda di riproduzione a QUESTA lista
+                // appena renderizzata: stesso riferimento di array usato dal browsing
+                // normale, così avanti/indietro e l'evidenziazione della riga restano
+                // sincronizzati invece di restare legati a una copia scollegata.
+                if (nowPlayingListKey === currentLoadedKey && nowPlayingIndex !== -1 && nowPlayingTracks[nowPlayingIndex]) {
+                    const matchIdx = appState.tracks.findIndex(t => t.id === nowPlayingTracks[nowPlayingIndex].id);
+                    if (matchIdx !== -1) {
+                        appState.currentIndex = matchIdx;
+                        nowPlayingTracks = appState.tracks;
+                        nowPlayingIndex = matchIdx;
+                    }
+                }
                 toggleDownloadButtons(false);
                 showResultsView(cachedPlaylist.name);
                 renderTracklist(0);
-                currentLoadedKey = 'playlist:' + url;
-                currentLoadedTitle = cachedPlaylist.name;
                 updateRefreshPlaylistBtn(url);
                 addRecentItem({ name: cachedPlaylist.name, type: 'playlist', url, artwork: cachedPlaylist.artwork });
                 addRecentPlaylist({ name: cachedPlaylist.name, url, artwork: cachedPlaylist.artwork });
@@ -4397,13 +4431,25 @@
                 });
                 appState.currentIndex = -1;
 
+                const cleanName = cleanSpotifyPlaylistName(meta.name);
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cleanName;
+                // Stessa riallineamento del ramo cache qui sopra: se il brano in ascolto ora
+                // appartiene a questa playlist, riaggancia la coda di riproduzione a questo
+                // appState.tracks appena costruito invece di lasciarla su una copia isolata.
+                if (nowPlayingListKey === currentLoadedKey && nowPlayingIndex !== -1 && nowPlayingTracks[nowPlayingIndex] && nowPlayingTracks[nowPlayingIndex].id) {
+                    const matchIdx = appState.tracks.findIndex(t => t.id === nowPlayingTracks[nowPlayingIndex].id);
+                    if (matchIdx !== -1) {
+                        appState.currentIndex = matchIdx;
+                        nowPlayingTracks = appState.tracks;
+                        nowPlayingIndex = matchIdx;
+                    }
+                }
+
                 if (resultsStatusText) resultsStatusText.classList.add('hidden');
                 renderTracklist(0);
 
-                const cleanName = cleanSpotifyPlaylistName(meta.name);
                 showResultsView(cleanName);
-                currentLoadedKey = 'playlist:' + url;
-                currentLoadedTitle = cleanName;
                 const playlistArtwork = meta.cover || pickRandomPlaylistArtwork(rawTracks);
                 const recentName = formatRecentPlaylistName(meta.name);
                 addRecentItem({ name: recentName, type: 'playlist', url, artwork: playlistArtwork });

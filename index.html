@@ -297,6 +297,16 @@
             opacity: 0;
             transition: opacity 0.25s ease;
         }
+        /* Le immagini <img> hanno su Android/Chrome un proprio menu contestuale
+           nativo (apri/salva immagine) che scatta con una sua vibrazione intorno
+           ai 500ms, PRIMA e in aggiunta alla pressione prolungata di 4s gestita da
+           noi su .track-row (vedi renderTracklist) - risultando in una doppia
+           vibrazione. pointer-events:none toglie l'immagine dal riconoscimento nativo
+           dei gesti touch: gli eventi passano al contenitore sottostante (.track-row),
+           dove restano gestiti regolarmente dal nostro long press. */
+        .track-thumb-img {
+            pointer-events: none;
+        }
         .track-thumb-img.loaded {
             opacity: 1;
         }
@@ -829,7 +839,7 @@
 
         /* ================= SKIN "WALKMAN" (opzionale, attivabile dalle Impostazioni) =================
            Ispirata ai lettori musicali hi-fi portatili: nero pieno, un argento freddo al posto
-           del "paper" caldo delle altre skin, copertine squadrate con un bordo sottile invece
+           del "paper" caldo dell'altra skin, copertine squadrate con un bordo sottile invece
            del cerchio arrotondato, e i pulsanti di riproduzione diventano "ad anello" (solo
            bordo, nessun riempimento arancione) come i tasti fisici di un lettore fisico. */
         html.walkman {
@@ -844,11 +854,17 @@
         /* Tutte le thumbnail/artwork di questa skin sono cerchi: card "RECENTI" in home,
            risultati di ricerca, playlist recenti nel menu impostazioni, miniplayer e now playing. */
         html.walkman .qcard .circle,
-        html.walkman .settings-playlist-thumb,
-        html.walkman #miniPlayerImgFrame {
+        html.walkman .settings-playlist-thumb {
             border-radius: 50% !important;
             box-shadow: none;
             border: 2.5px solid rgba(255,255,255,0.55);
+        }
+        /* Cornice del mini player leggermente più spessa delle altre thumbnail circolari:
+           essendo più piccolo, un bordo sottile risultava poco percettibile. */
+        html.walkman #miniPlayerImgFrame {
+            border-radius: 50% !important;
+            box-shadow: none;
+            border: 6px solid rgba(255,255,255,0.55);
         }
         /* Cornice bianca "a vetro": sul grande artwork della Now Playing sheet è
            leggermente più spessa, coerente col trattamento delle altre artwork. */
@@ -921,7 +937,7 @@
            dell'interfaccia, quindi l'icona risultava bianca. Usiamo lo stesso viola
            "highlight" già riservato in questo tema agli indicatori attivi (barra del
            minutaggio, brano in riproduzione) al posto di --accent. L'outline flat resta
-           quella di --bg-gradient-top di questo tema (nero), coerente con le altre skin. */
+           quella di --bg-gradient-top di questo tema (nero), coerente con l'altra skin. */
         html.walkman #repeatBtn.active #repeatIcon {
             color: var(--walkman-highlight) !important;
             -webkit-text-stroke-color: var(--bg-gradient-top);
@@ -936,7 +952,7 @@
         /* Icona download nell'header "In Riproduzione": qui --accent è il bianco/argento
            del resto dell'interfaccia (stesso motivo del repeat/sleep timer sopra), quindi
            va forzata sullo stesso viola "highlight" per restare accentata come nelle
-           altre skin invece di confondersi con le altre icone bianche dell'header. */
+           altra skin invece di confondersi con le altre icone bianche dell'header. */
         html.walkman #sheetDownloadBtn,
         html.walkman #sheetDownloadBtn i {
             color: var(--walkman-highlight) !important;

@@ -4960,6 +4960,19 @@
             if (!slider || slider.classList.contains('showing-results')) return;
             slider.classList.add('showing-results');
             window.history.pushState({ page: 'results' }, 'Results');
+
+            // Se la lista che si sta aprendo è proprio quella in ascolto (stessa chiave:
+            // vedi nowPlayingListKey/currentLoadedKey usati altrove per lo stesso confronto),
+            // la riga del brano corrente è già evidenziata ('playing') da loadTrack: qui
+            // basta portarla in vista, così ogni volta che si entra nella lista canzoni la
+            // si ritrova già scrollata sul brano in corso, senza doverla cercare a mano.
+            // La traslazione orizzontale di #viewsSlider non sposta le righe verticalmente,
+            // quindi il calcolo di scrollActiveTrackRowIntoView resta valido subito, anche
+            // durante l'animazione di apertura.
+            if (nowPlayingListKey && nowPlayingListKey === currentLoadedKey && appState.currentIndex !== -1) {
+                const activeRow = document.getElementById(`track-row-${appState.currentIndex}`);
+                if (activeRow) scrollActiveTrackRowIntoView(activeRow);
+            }
         }
 
         function showHomeView() {
@@ -5080,6 +5093,17 @@
             // sommata a eventuali richieste lente/fallite, poteva allungarsi a decine di
             // secondi prima che l'ultima riga ricevesse la sua copertina).
             runArtworkQueue(appState.tracks, fromIndex);
+
+            // Se il brano in ascolto appartiene proprio a questa lista appena renderizzata
+            // da zero (appState.currentIndex è impostato SOLO quando la lista mostrata è
+            // anche quella in coda, vedi loadTrack/isBrowsingListPlaying), la portiamo
+            // subito in vista. Stesso meccanismo di showResultsView() qui sotto, per il
+            // caso in cui invece la lista era già renderizzata in precedenza e si torna
+            // solo a mostrarla (lì le righe esistono già e non si passa da qui).
+            if (fromIndex === 0 && appState.currentIndex !== -1) {
+                const activeRow = document.getElementById(`track-row-${appState.currentIndex}`);
+                if (activeRow) scrollActiveTrackRowIntoView(activeRow);
+            }
         }
 
         // "N alla volta": un numero fisso di richieste iTunes gira in parallelo: appena una
@@ -5657,10 +5681,15 @@
                 if (player && player.getPlayerState && typeof player.getPlayerState === 'function') {
                     const state = player.getPlayerState();
                     const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
-                    // 2 = PAUSED, -1 = UNSTARTED: se il browser ha messo in pausa il
+                    // 2 = PAUSED, -1 = UNSTARTED, 5 = CUED: se il browser ha messo in pausa il
                     // player da solo mentre l'utente si aspettava ancora la riproduzione,
-                    // lo rimettiamo in play.
-                    if (state === 2 || state === -1) {
+                    // lo rimettiamo in play. Il caso CUED è quello del repeat/autoadvance a
+                    // schermo spento (Android Auto): loadVideoById() carica il video ma
+                    // l'autoplay interno viene bloccato dal browser in background, e il
+                    // player resta fermo su "caricato ma non partito" senza mai passare da
+                    // BUFFERING (quindi il ramo qui sotto non lo intercetterebbe) né da
+                    // PAUSED/UNSTARTED (quindi andava aggiunto qui esplicitamente).
+                    if (state === 2 || state === -1 || state === 5) {
                         stuckBufferingTicks = 0;
                         try { player.playVideo(); } catch (err) {}
                         return;
@@ -5696,7 +5725,9 @@
             if (ka && ka.paused) ka.play().catch(() => {});
             if (player && player.getPlayerState) {
                 const state = player.getPlayerState();
-                if (state === 2 || state === -1) {
+                // Stesso motivo del watchdog qui sopra: anche rientrando nell'app va
+                // recuperato lo stato CUED (5), non solo PAUSED/UNSTARTED.
+                if (state === 2 || state === -1 || state === 5) {
                     try { player.playVideo(); } catch (err) {}
                 }
             }

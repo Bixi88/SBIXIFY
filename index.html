@@ -663,11 +663,10 @@
         /* L'header ora è il primo figlio della vista home (dentro #homeView, che scrolla)
            invece di un blocco esterno con altezza sincronizzata via JS: reso "sticky" in
            cima, si comporta come un header fisso ma la sua altezza è sempre quella naturale
-           del contenuto (nessun calcolo/animazione necessaria). Sfondo pieno (--bg-main) per
-           coprire la lista quando scorre sotto. */
+           del contenuto (nessun calcolo/animazione necessaria). Nessuno sfondo pieno: resta
+           trasparente e si fonde con il gradiente del body, niente più "rettangolo" visibile. */
         .home-header {
             position: sticky; top: 0; z-index: 20;
-            background: var(--bg-main);
             padding: 4px 6px 0;
         }
         .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
@@ -690,12 +689,12 @@
         #searchInput::placeholder { color:#8b8794; }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Stesso discorso dell'header home: ora è il primo figlio di #resultsView, sticky
-           in cima con sfondo pieno, altezza sempre naturale e compatta. */
+           in cima, altezza sempre naturale e compatta. Nessuno sfondo pieno: trasparente,
+           si fonde col gradiente del body come l'header home. */
         .results-header {
             position: sticky; top: 0; z-index: 20;
             display:flex; align-items:center; gap:14px;
             padding:10px 8px 6px; height:40px;
-            background: var(--bg-main);
         }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
         .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }

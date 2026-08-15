@@ -2142,8 +2142,14 @@
                     const deltaY = e.changedTouches[0].clientY - startY;
                     if (Math.abs(deltaX) <= Math.abs(deltaY) * DIRECTION_RATIO) return;
 
-                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0) {
-                        // Swipe sinistra: riapre la lista canzoni della playlist attiva
+                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0 && nowPlayingListKey && currentLoadedKey === nowPlayingListKey) {
+                        // Swipe sinistra: riapre la lista canzoni della playlist attiva.
+                        // Permesso solo se il brano in ascolto ora appartiene DAVVERO alla
+                        // lista caricata in appState.tracks (stesso listKey): un Recente
+                        // aperto senza playlist (nowPlayingListKey nullo) non ha nessuna
+                        // lista a cui tornare, quindi lo swipe non deve fare nulla invece
+                        // di riaprire una lista sfogliata in passato e ormai scollegata
+                        // da ciò che sta suonando.
                         hapticFeedback();
                         showResultsView();
                     } else if (deltaX > SWIPE_THRESHOLD) {

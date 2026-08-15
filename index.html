@@ -1030,27 +1030,32 @@
             position: absolute;
             top: 0; left: 0;
             width: 100%;
-            height: 58%;
+            height: 72%;
             object-fit: cover;
         }
         /* Sfumatura in due parti:
-           1) In alto, un velo scuro che si dissolve rapidamente (0-22%): serve solo a
+           1) In alto, un velo scuro che si dissolve rapidamente (0-20%): serve solo a
               rendere leggibili "In riproduzione"/nome playlist sopra copertine chiare o
               molto dettagliate, senza scurire visibilmente il resto dell'artwork sotto.
-           2) Verso il basso, una transizione lunga e morbida (dal 38% fino al 92%) verso
-              il colore dominante, molto più graduale ed elegante del taglio netto di prima:
-              l'artwork "si stacca" dal colore pieno con uno stacco quasi impercettibile
-              invece che una linea visibile. */
+           2) Verso il basso, una transizione lunga, morbida e "pesante" (dal 30% fino al
+              90%, cioè 60 punti di schermo) verso il colore dominante: parte già visibile
+              a poco più di un quarto dell'artwork e cresce con una curva a più tappe
+              (25% → 55% → 80% → pieno) invece di un semplice lineare, così il colore
+              "prende il sopravvento" con lo stesso peso ed eleganza della reference,
+              arrivando quasi a lambire il titolo del brano pur restando tutto leggibile. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
                 rgba(0,0,0,0.6) 0%,
-                rgba(0,0,0,0.22) 12%,
-                rgba(0,0,0,0) 22%,
-                rgba(0,0,0,0) 38%,
-                var(--immersive-color) 92%,
+                rgba(0,0,0,0.22) 10%,
+                rgba(0,0,0,0) 20%,
+                rgba(0,0,0,0) 30%,
+                color-mix(in srgb, var(--immersive-color) 25%, transparent) 46%,
+                color-mix(in srgb, var(--immersive-color) 55%, transparent) 62%,
+                color-mix(in srgb, var(--immersive-color) 82%, transparent) 78%,
+                var(--immersive-color) 90%,
                 var(--immersive-color) 100%);
             transition: opacity 0.25s ease;
         }

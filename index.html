@@ -663,8 +663,11 @@
         /* L'header ora è il primo figlio della vista home (dentro #homeView, che scrolla)
            invece di un blocco esterno con altezza sincronizzata via JS: reso "sticky" in
            cima, si comporta come un header fisso ma la sua altezza è sempre quella naturale
-           del contenuto (nessun calcolo/animazione necessaria). Nessuno sfondo pieno: resta
-           trasparente e si fonde con il gradiente del body, niente più "rettangolo" visibile. */
+           del contenuto (nessun calcolo/animazione necessaria). Nessuno sfondo pieno qui:
+           resta trasparente, il colore/dissolvenza dietro arriva dal layer fixed qui sotto
+           (#homeHeaderBgFixed), che non essendo figlio di #homeView non viene tagliato dal
+           bordo della vista (che ha overflow-y: auto e quindi, per la nota regola CSS,
+           taglierebbe anche in orizzontale qualunque sfondo provi a "sforare" i suoi bordi). */
         .home-header {
             position: sticky; top: 0; z-index: 20;
             padding: 4px 6px 0;
@@ -690,12 +693,33 @@
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Stesso discorso dell'header home: ora è il primo figlio di #resultsView, sticky
            in cima, altezza sempre naturale e compatta. Nessuno sfondo pieno: trasparente,
-           si fonde col gradiente del body come l'header home. */
+           il colore/dissolvenza arriva dal layer fixed #resultsHeaderBgFixed qui sotto. */
         .results-header {
             position: sticky; top: 0; z-index: 20;
             display:flex; align-items:center; gap:14px;
             padding:10px 8px 6px; height:40px;
         }
+
+        /* ================= LAYER DI SFONDO FISSO (bordo a bordo) DIETRO GLI HEADER =================
+           #homeHeaderBgFixed / #resultsHeaderBgFixed non sono figli di #homeView/#resultsView:
+           sono "position: fixed", quindi ignorano completamente il bordo/overflow della vista
+           che scrolla e possono coprire la larghezza intera dello schermo (compreso lo spazio
+           dei 16px di padding del body, che invece limita l'header stesso e tutto il resto del
+           contenuto). Coprono nero pieno per l'altezza dell'header e poi sfumano a trasparente,
+           così il contenuto che scorre sotto sfuma invece di sovrapporsi o tagliarsi di netto.
+           z-index sotto l'header (che resta a 20, sempre sopra) ma sopra la lista che scorre. */
+        #homeHeaderBgFixed, #resultsHeaderBgFixed {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 15;
+            pointer-events: none;
+            background: linear-gradient(to bottom, var(--bg-main) 0%, var(--bg-main) 62%, transparent 100%);
+        }
+        #homeHeaderBgFixed { height: 150px; }
+        #resultsHeaderBgFixed { height: 100px; display: none; }
+        /* #viewsSlider guadagna/perde "showing-results" quando si passa da home a playlist
+           (stesso meccanismo già usato per la transizione orizzontale): lo riusiamo per
+           mostrare il layer giusto senza bisogno di altro JS. */
+        #viewsSlider.showing-results ~ #homeHeaderBgFixed { display: none; }
+        #viewsSlider.showing-results ~ #resultsHeaderBgFixed { display: block; }
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
         .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
@@ -1198,6 +1222,11 @@
                     <div id="trackList" class="pb-28 px-6 pt-4"></div>
                 </div>
             </div>
+            <!-- Layer di sfondo fisso, bordo a bordo, dietro agli header (vedi commento CSS
+                 sopra su #homeHeaderBgFixed/#resultsHeaderBgFixed per il perché sono qui e
+                 non dentro le view che scrollano). -->
+            <div id="homeHeaderBgFixed"></div>
+            <div id="resultsHeaderBgFixed"></div>
         </section>
 
         <div id="ytPlayerContainer" class="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"></div>

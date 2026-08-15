@@ -3989,11 +3989,13 @@
         }
 
         // Aggiunge (o riporta in cima, se già presente) un brano ascoltato. Dedup per id
-        // YouTube: la stessa canzone risentita non crea una seconda voce.
-        function addRecentTrack({ id, title, channel, thumbnail = null, spotifyImport = false }) {
+        // YouTube: la stessa canzone risentita non crea una seconda voce. Salviamo anche
+        // la playlist di provenienza (se c'era): serve a riaprire il brano da "Canzoni"
+        // in home mostrando la stessa etichetta "Riproduzione da Playlist" di sempre.
+        function addRecentTrack({ id, title, channel, thumbnail = null, spotifyImport = false, listType = null, listKey = null, listTitle = '' }) {
             if (!id || !title) return;
             let items = loadRecentTracks().filter(it => it.id !== id);
-            items.unshift({ id, title, channel, thumbnail, spotifyImport: !!spotifyImport, ts: Date.now() });
+            items.unshift({ id, title, channel, thumbnail, spotifyImport: !!spotifyImport, listType: listType || null, listKey: listKey || null, listTitle: listTitle || '', ts: Date.now() });
             items = items.slice(0, RECENT_TRACKS_MAX);
             saveRecentTracks(items);
             renderRecentTracksHome();
@@ -4079,21 +4081,32 @@
             renderRecentTracksHome();
         }
 
-        // Riapre e riproduce subito un brano già ascoltato in passato: l'id YouTube è
-        // già risolto (lo salviamo in addRecentTrack solo a risoluzione avvenuta), quindi
-        // non serve alcuna nuova ricerca, parte come una playlist di un solo brano.
+        // Riapre un brano già ascoltato in passato dalla home ("Canzoni"). Se è già quello
+        // in riproduzione in questo momento, NON lo riavvia: si limita ad aprire la Now
+        // Playing Sheet. Altrimenti lo fa partire subito, ma SENZA creare/aprire alcuna
+        // playlist fittizia da un solo brano: la lista sfogliata (appState.tracks, vista
+        // Risultati) resta quella che l'utente aveva prima, invariata. L'etichetta in alto
+        // nella sheet userà la playlist di provenienza salvata col brano (se c'era, sarà
+        // tappabile per riaprirla); se il brano veniva da una ricerca singola, l'etichetta
+        // resta il generico "In Riproduzione" senza nulla sotto.
         function openRecentTrack(item) {
             if (!item || !item.id) return;
-            currentListSource = item.spotifyImport ? 'spotify' : 'youtube';
-            nextSearchPageToken = '';
-            appState.tracks = [{ ...item }];
-            appState.currentIndex = -1;
-            currentLoadedKey = 'track:' + item.id;
-            currentLoadedTitle = item.title;
-            toggleDownloadButtons(false);
-            showResultsView(item.title);
-            renderTracklist(0);
-            loadTrack(0);
+
+            const isAlreadyPlaying = nowPlayingIndex !== -1
+                && nowPlayingTracks[nowPlayingIndex]
+                && nowPlayingTracks[nowPlayingIndex].id === item.id;
+
+            if (isAlreadyPlaying) {
+                openNowPlayingSheet();
+                return;
+            }
+
+            hapticFeedback();
+            nowPlayingListType = item.listType || null;
+            nowPlayingListKey = item.listKey || null;
+            nowPlayingListTitle = item.listTitle || '';
+            loadTrack(0, [{ ...item }]);
+            openNowPlayingSheetWhenArtworkReady();
         }
 
         // Aggiorna l'etichetta in alto nella Now Playing Sheet: se il brano in ascolto
@@ -5550,7 +5563,7 @@
             // valido: qui è garantito, o era già presente o è appena stato risolto poco
             // sopra (in caso contrario la funzione è già uscita prima di arrivare qui).
             if (track.id) {
-                addRecentTrack({ id: track.id, title: track.title, channel: track.channel, thumbnail: track.thumbnail || null, spotifyImport: !!track.spotifyImport });
+                addRecentTrack({ id: track.id, title: track.title, channel: track.channel, thumbnail: track.thumbnail || null, spotifyImport: !!track.spotifyImport, listType: nowPlayingListType, listKey: nowPlayingListKey, listTitle: nowPlayingListTitle });
             }
         }
 
@@ -5653,7 +5666,7 @@
                 // nel momento in cui l'utente lo fa davvero partire per la prima volta.
                 const t = nowPlayingTracks[nowPlayingIndex];
                 if (t && t.id) {
-                    addRecentTrack({ id: t.id, title: t.title, channel: t.channel, thumbnail: t.thumbnail || null, spotifyImport: !!t.spotifyImport });
+                    addRecentTrack({ id: t.id, title: t.title, channel: t.channel, thumbnail: t.thumbnail || null, spotifyImport: !!t.spotifyImport, listType: nowPlayingListType, listKey: nowPlayingListKey, listTitle: nowPlayingListTitle });
                 }
             }
         }

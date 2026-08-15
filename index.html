@@ -54,6 +54,12 @@
             --immersive-color-55: rgba(11,11,14,0.55);
             --immersive-color-75: rgba(11,11,14,0.75);
             --immersive-color-90: rgba(11,11,14,0.9);
+            /* Variante "vivida" dello stesso colore dominante (non quasi-nera come sopra):
+               usata per evidenziare la riga del brano in ascolto in home/lista canzoni
+               (vedi .track-row.playing/.home-track-row.playing più sotto), calcolata in
+               updateImmersiveColorFromArtwork insieme al testo di contrasto giusto. */
+            --immersive-accent: #3A3A42;
+            --immersive-accent-text: #ffffff;
         }
 
         html, body {
@@ -1153,6 +1159,41 @@
             -webkit-backdrop-filter: none;
         }
 
+        /* ---- Home "Canzoni" e lista tracce: riga del brano in ascolto evidenziata con
+           il colore dinamico dell'artwork (--immersive-accent, stessa logica già usata
+           per il mini player, vedi updateImmersiveColorFromArtwork) - come nella
+           reference YT Music mostrata dall'utente. La transizione sta sul selettore base
+           (non solo su ".playing"), così anima sia quando la classe viene aggiunta/tolta
+           al cambio brano, sia quando la CSS var stessa cambia poco dopo (l'estrazione
+           colore è async): risultato, un'unica dissolvenza percepita verso il colore
+           giusto invece di uno scatto. */
+        html.immersive .track-row,
+        html.immersive .home-track-row {
+            border-radius: 14px;
+            transition: background-color 0.45s ease;
+        }
+        html.immersive .track-row.playing,
+        html.immersive .home-track-row.playing {
+            background: var(--immersive-accent);
+        }
+        html.immersive .track-row.playing::after,
+        html.immersive .home-track-row.playing::after {
+            display: none;
+        }
+        /* Il testo passa a nero o bianco (--immersive-accent-text, calcolato insieme al
+           colore) a seconda di quanto risulta chiara la tonalità dominante, per restare
+           leggibile anche su copertine chiare come nella reference. */
+        html.immersive .track-row.playing p.text-sm,
+        html.immersive .track-row.playing p.text-xs,
+        html.immersive .home-track-row.playing .t-title,
+        html.immersive .home-track-row.playing .t-sub {
+            color: var(--immersive-accent-text) !important;
+            transition: color 0.45s ease;
+        }
+        html.immersive .home-track-row.playing .t-sub {
+            opacity: 0.75;
+        }
+
         /* ---- Font dedicato: now playing sheet, lista canzoni/ricerche, miniplayer ---- */
         html.walkman #nowPlayingSheet,
         html.walkman #trackList,
@@ -1866,22 +1907,41 @@
                         for (const k in buckets) {
                             if (buckets[k] > bestCount) { bestCount = buckets[k]; bestKey = k; }
                         }
-                        let r = 14, g = 14, b = 18;
+                        let rawR = 14, rawG = 14, rawB = 18;
                         if (bestKey) {
                             const parts = bestKey.split(',').map(n => parseInt(n, 10) * 16 + 8);
-                            r = parts[0]; g = parts[1]; b = parts[2];
+                            rawR = parts[0]; rawG = parts[1]; rawB = parts[2];
                         }
-                        // Scurisce mantenendo la tonalità: scala sempre verso il basso se
-                        // supera la soglia. Soglia bassa apposta (non solo "se troppo
-                        // chiaro"): così il colore resta sempre scuro come nella
-                        // reference, anche partendo da un artwork dai colori vivaci.
+                        // Versione scura (Now Playing sheet, lyrics, mini player): scurisce
+                        // mantenendo la tonalità, scalando sempre verso il basso se supera
+                        // la soglia. Soglia bassa apposta (non solo "se troppo chiaro"):
+                        // così il colore resta sempre scuro come nella reference, anche
+                        // partendo da un artwork dai colori vivaci.
+                        let r = rawR, g = rawG, b = rawB;
                         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
                         const maxLum = 30;
                         if (lum > maxLum) {
                             const factor = maxLum / lum;
                             r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);
                         }
-                        callback(r, g, b);
+                        // Versione "vivida" (evidenziazione del brano in ascolto in home e
+                        // lista canzoni, vedi reference YT Music): stessa tonalità del
+                        // colore dominante, ma riportata in una fascia di luminosità
+                        // intermedia invece che quasi-nera, così la riga risulta colorata
+                        // e leggibile invece di confondersi con lo sfondo scuro della skin.
+                        let vr = rawR, vg = rawG, vb = rawB;
+                        const vLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
+                        const minVividLum = 70, maxVividLum = 200;
+                        if (vLum > 0 && vLum < minVividLum) {
+                            const factor = Math.min(minVividLum / vLum, 10);
+                            vr = Math.min(255, Math.round(vr * factor));
+                            vg = Math.min(255, Math.round(vg * factor));
+                            vb = Math.min(255, Math.round(vb * factor));
+                        } else if (vLum > maxVividLum) {
+                            const factor = maxVividLum / vLum;
+                            vr = Math.round(vr * factor); vg = Math.round(vg * factor); vb = Math.round(vb * factor);
+                        }
+                        callback(r, g, b, vr, vg, vb);
                     } catch (e) { callback(null); }
                 };
                 img.onerror = () => callback(null);
@@ -1902,9 +1962,9 @@
         function updateImmersiveColorFromArtwork(url) {
             if (!url) return;
             applyImmersiveArtwork(url);
-            extractDominantDarkColor(url, (r, g, b) => {
+            extractDominantDarkColor(url, (r, g, b, vr, vg, vb) => {
                 // Fallback se l'estrazione fallisce (CORS, immagine non ancora pronta, ecc.).
-                if (r == null) { r = 11; g = 11; b = 14; }
+                if (r == null) { r = 11; g = 11; b = 14; vr = 58; vg = 58; vb = 66; }
                 const root = document.documentElement.style;
                 root.setProperty('--immersive-color', `rgb(${r},${g},${b})`);
                 // Varianti dello stesso colore a diverse opacità: servono alla sfumatura
@@ -1918,6 +1978,15 @@
                 root.setProperty('--immersive-color-55', `rgba(${r},${g},${b},0.55)`);
                 root.setProperty('--immersive-color-75', `rgba(${r},${g},${b},0.75)`);
                 root.setProperty('--immersive-color-90', `rgba(${r},${g},${b},0.9)`);
+                // Colore "vivido" per l'evidenziazione del brano in ascolto in home e
+                // lista canzoni (vedi .track-row.playing/.home-track-row.playing nel CSS):
+                // stessa tonalità del brano, ma più chiara/satura del quasi-nero usato per
+                // Now Playing/mini player. Il testo passa a nero o bianco a seconda di
+                // quanto risulta chiaro quel colore, per restare leggibile anche su
+                // copertine chiare (vedi screenshot di reference).
+                const vividLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
+                root.setProperty('--immersive-accent', `rgb(${vr},${vg},${vb})`);
+                root.setProperty('--immersive-accent-text', vividLum > 150 ? '#181818' : '#ffffff');
                 const c = `rgb(${r},${g},${b})`;
                 if (document.documentElement.classList.contains('immersive')) {
                     document.getElementById('metaThemeColor')?.setAttribute('content', c);
@@ -4187,8 +4256,16 @@
             }
 
             section.classList.remove('hidden');
+            // Riga del brano attualmente in ascolto (per l'evidenziazione dinamica della
+            // skin Immersive, vedi .home-track-row.playing nel CSS): confrontata per id
+            // YouTube con nowPlayingTracks/nowPlayingIndex invece di assumere sempre
+            // l'indice 0, così resta corretta anche nei casi limite in cui questa lista
+            // non fosse ancora stata riordinata da un addRecentTrack per il brano corrente.
+            const currentPlayingId = (typeof nowPlayingIndex !== 'undefined' && nowPlayingTracks[nowPlayingIndex])
+                ? nowPlayingTracks[nowPlayingIndex].id
+                : null;
             col.innerHTML = items.map((it, i) => `
-                <div class="home-track-row" data-index="${i}">
+                <div class="home-track-row${currentPlayingId && it.id === currentPlayingId ? ' playing' : ''}" data-index="${i}">
                     <div class="w-13 h-13 rounded-full overflow-hidden shrink-0 relative track-thumb-wrap" style="width:52px;height:52px;">
                         <div style="width:100%;height:100%;background-size:cover;background-position:center;background-color:var(--bg-input);${it.thumbnail ? `background-image:url('${it.thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
                     </div>

@@ -52,7 +52,7 @@
             width: 100%; height: 100%;
             overflow: hidden;
             overscroll-behavior: none;
-            background: var(--bg-gradient);
+            background: var(--bg-main);
             color: var(--text-main);
         }
 
@@ -334,6 +334,15 @@
         }
 
         .custom-bg-main { background: var(--bg-gradient); }
+        /* Il body stesso resta a tinta piena (bg-main): il padding p-4 del body, se
+           avesse lo sfondo sfumato, lo rivelerebbe come due "colonne" viola ai lati
+           (e strisce sopra/sotto), visibili a tutta altezza perché nessun contenuto
+           interno arriva fino al bordo reale dello schermo per coprirle. La sfumatura
+           viola vive invece su .app-gradient-bg (il <main>), che coincide esattamente
+           con l'area interna al padding: così il gutter del body appare nero pieno,
+           uguale allo sfondo degli header (--bg-main), senza cuciture visibili. */
+        .app-body-bg { background: var(--bg-main); }
+        .app-gradient-bg { background: var(--bg-gradient); }
         .custom-bg-card { background: var(--bg-card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
         .custom-bg-input { background-color: var(--bg-input); }
         .custom-text-accent { color: var(--accent); }
@@ -1161,7 +1170,7 @@
         html.walkman .lyrics-line.active { color: var(--walkman-highlight); }
     </style>
 </head>
-<body class="flex flex-col justify-between hidden p-4 box-border h-full custom-bg-main relative">
+<body class="flex flex-col justify-between hidden p-4 box-border h-full app-body-bg relative">
     <!-- Campi "esca" invisibili e non raggiungibili: servono solo a far sì che Chrome/Android
          associno la classificazione "username/password" a QUESTI campi finti invece che ai
          veri campi API Key più sotto nella pagina, che altrimenti vengono scambiati per una
@@ -1174,7 +1183,7 @@
     </div>
 
     <!-- Sezione Principale -->
-    <main class="flex-1 flex flex-col overflow-hidden z-10 relative">
+    <main class="flex-1 flex flex-col overflow-hidden z-10 relative app-gradient-bg">
         <section class="flex-1 flex flex-col overflow-hidden h-full relative">
             <div id="viewsSlider" class="flex h-full">
                 <!-- VISTA 1: Home (Recenti) -->

@@ -49,7 +49,6 @@
                e url di sfondo del mini player, entrambi con un fallback statico finché
                nessun brano è ancora stato caricato. */
             --immersive-color: #0B0B0E;
-            --mini-immersive-bg: none;
         }
 
         html, body {
@@ -1045,6 +1044,15 @@
                 rgba(0,0,0,0.28) 34%,
                 var(--immersive-color) 64%,
                 var(--immersive-color) 100%);
+            transition: opacity 0.25s ease;
+        }
+        html.immersive #immersiveBgImg { transition: opacity 0.25s ease; }
+        /* Testi aperti: l'artwork (immagine + sfumatura) sparisce del tutto e resta solo il
+           colore pieno impostato su #nowPlayingSheet stesso, che così copre l'intero schermo
+           in modo uniforme dietro al pannello dei testi - non solo dietro al suo riquadro. */
+        html.immersive #nowPlayingSheet.lyrics-open #immersiveBgImg,
+        html.immersive #nowPlayingSheet.lyrics-open #immersiveBg::after {
+            opacity: 0;
         }
         /* Testi, minutaggio e pulsanti della Now Playing sheet: sempre bianchi in questa skin. */
         html.immersive #nowPlayingSheet #sheetHeaderEyebrow,
@@ -1079,27 +1087,18 @@
         html.immersive .lyrics-line { color: rgba(255, 255, 255, 0.5); }
         html.immersive .lyrics-line.active { color: #fff; }
 
-        /* ---- Mini player: sfondo = artwork del brano, UI sempre bianca sopra un velo scuro ---- */
+        /* ---- Mini player: un solo colore pieno (lo stesso dominante della Now Playing
+           sheet), niente immagine di sfondo, UI sempre bianca sopra. NIENTE "position:
+           relative" qui: il mini player è "fixed" (classe Tailwind sull'elemento) per stare
+           ancorato in fondo allo schermo - sovrascriverlo con "relative" lo faceva
+           rientrare nel normale flusso della pagina invece che restare fissato, motivo per
+           cui usciva dallo schermo. "fixed" è già di per sé un contesto di posizionamento,
+           quindi non serve altro perché backdrop-filter/overflow funzionino. */
         html.immersive #miniPlayer {
-            position: relative;
             overflow: hidden;
-            background-image: var(--mini-immersive-bg);
-            background-size: cover;
-            background-position: center;
-        }
-        html.immersive #miniPlayer::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: inherit;
-            background: linear-gradient(120deg, rgba(0,0,0,0.5), rgba(0,0,0,0.74));
-            z-index: 0;
-            pointer-events: none;
-        }
-        html.immersive #miniPlayerContent,
-        html.immersive #miniProgressBarArea {
-            position: relative;
-            z-index: 1;
+            background: var(--immersive-color) !important;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
         }
 
         /* ---- Font dedicato: now playing sheet, lista canzoni/ricerche, miniplayer ---- */
@@ -1818,15 +1817,16 @@
                 img.src = url;
             } catch (e) { callback(null); }
         }
-        // Applica l'artwork corrente come sfondo del layer dinamico nella Now Playing sheet e
-        // come sfondo del mini player: fatto sempre (non solo a tema "Immersive" attivo) così,
-        // se l'utente passa a questa skin dalle Impostazioni mentre un brano è già in corso,
-        // trova subito lo sfondo giusto invece di dover aspettare il brano successivo.
+        // Applica l'artwork corrente come sfondo del layer dinamico nella Now Playing sheet:
+        // fatto sempre (non solo a tema "Immersive" attivo) così, se l'utente passa a questa
+        // skin dalle Impostazioni mentre un brano è già in corso, trova subito lo sfondo
+        // giusto invece di dover aspettare il brano successivo. Il mini player NON usa più
+        // l'immagine: prende solo il colore dominante (--immersive-color), calcolato più
+        // sotto in extractDominantDarkColor.
         function applyImmersiveArtwork(url) {
             if (!url) return;
             const bgImg = document.getElementById('immersiveBgImg');
             if (bgImg) bgImg.src = url;
-            document.documentElement.style.setProperty('--mini-immersive-bg', 'url("' + url + '")');
         }
         function updateImmersiveColorFromArtwork(url) {
             if (!url) return;
@@ -2859,6 +2859,10 @@
             if (lyricsLines.length === 0 && document.getElementById('lyricsScroll').children.length === 0) return;
             lyricsOpen = true;
             document.getElementById('artworkBand').classList.add('lyrics-shown');
+            // Skin "Immersive": mentre i testi sono aperti l'intero sfondo della sheet deve
+            // diventare un unico colore pieno (niente più immagine/gradiente sopra), invece
+            // di lasciare l'artwork visibile intorno al riquadro dei testi.
+            document.getElementById('nowPlayingSheet')?.classList.add('lyrics-open');
             hapticFeedback();
             // Riallinea subito la riga attiva sulla posizione corrente del brano, invece di
             // aspettare il prossimo tick del loop di progresso.
@@ -2871,6 +2875,7 @@
         function closeLyricsPanel() {
             lyricsOpen = false;
             document.getElementById('artworkBand')?.classList.remove('lyrics-shown');
+            document.getElementById('nowPlayingSheet')?.classList.remove('lyrics-open');
         }
 
         // Swipe ORIZZONTALE sulla fascia artwork (#artworkBand): verso sinistra col vinile

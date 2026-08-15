@@ -919,12 +919,13 @@
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
         }
-        /* Cornice del contenitore "a pillola" del mini player un po' più spessa
-           delle altre superfici .glass-panel (menu impostazioni, toast), che
-           restano a 1px: qui, isolato da loro, il pannello risulta più definito
-           contro lo sfondo nero pieno di questo tema. */
+        /* Cornice del contenitore "a pillola" del mini player un po' più spessa e più
+           chiara (opacità alzata da 0.14 a 0.35) delle altre superfici .glass-panel
+           (menu impostazioni, toast), che restano invariate: qui, isolato da loro, il
+           pannello risulta più definito contro lo sfondo nero pieno di questo tema. */
         html.walkman #miniPlayer {
             border-width: 2px;
+            border-color: rgba(240,240,242,0.35);
         }
         /* Pulsanti play/pausa: anello vuoto invece del cerchio arancione pieno */
         html.walkman #playPauseBtn,

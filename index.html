@@ -2600,8 +2600,11 @@
                     return;
                 }
                 const dist = Math.abs(i - idx);
-                const blur = Math.min(2 + dist * 1.4, 8);
-                const opacity = Math.max(0.55 - dist * 0.09, 0.2);
+                // Gradiente più dolce vicino alla riga attiva (poco sfocate quelle
+                // subito sopra/sotto, sempre più sfocate mano a mano ci si allontana),
+                // invece del salto netto di prima.
+                const blur = Math.min(dist * 1.1, 7);
+                const opacity = Math.max(0.62 - dist * 0.07, 0.22);
                 el.style.filter = `blur(${blur}px)`;
                 el.style.opacity = String(opacity);
             });

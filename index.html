@@ -1166,7 +1166,9 @@
             filter: blur(0);
             transform: scale(1.08);
         }
-        .lyrics-line.past { opacity: 0.3; }
+        /* Nota: la sfocatura/opacità delle righe non attive è ora graduale in base
+           alla distanza dalla riga attiva, calcolata ed impostata inline da
+           updateActiveLyricLine() in JS - non più un valore fisso qui in CSS. */
         .lyrics-state {
             flex: 1;
             display: flex;
@@ -2584,6 +2586,24 @@
             allLines.forEach((el, i) => {
                 el.classList.toggle('active', i === idx);
                 el.classList.toggle('past', i < idx);
+            });
+            // Sfocatura/opacità graduali in base alla distanza dalla riga attiva
+            // (non un semplice "attiva sì/no" a due stati): più una riga è lontana,
+            // più sfuma, imitando l'effetto "a fuoco solo il presente" di Apple Music.
+            // Impostati inline (non in CSS) perché il valore dipende dalla posizione
+            // relativa di ogni riga rispetto a quella attiva, cosa che il CSS da solo
+            // non può calcolare.
+            allLines.forEach((el, i) => {
+                if (i === idx) {
+                    el.style.filter = '';
+                    el.style.opacity = '';
+                    return;
+                }
+                const dist = Math.abs(i - idx);
+                const blur = Math.min(2 + dist * 1.4, 8);
+                const opacity = Math.max(0.55 - dist * 0.09, 0.2);
+                el.style.filter = `blur(${blur}px)`;
+                el.style.opacity = String(opacity);
             });
             const activeEl = allLines[idx];
             if (activeEl) {

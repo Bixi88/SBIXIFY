@@ -1033,16 +1033,24 @@
             height: 58%;
             object-fit: cover;
         }
-        /* Sfuma dall'artwork (in alto) al colore dominante scuro, che poi riempie da solo
-           tutta la metà inferiore dello schermo: è questo il gradiente dinamico richiesto. */
+        /* Sfumatura in due parti:
+           1) In alto, un velo scuro che si dissolve rapidamente (0-22%): serve solo a
+              rendere leggibili "In riproduzione"/nome playlist sopra copertine chiare o
+              molto dettagliate, senza scurire visibilmente il resto dell'artwork sotto.
+           2) Verso il basso, una transizione lunga e morbida (dal 38% fino al 92%) verso
+              il colore dominante, molto più graduale ed elegante del taglio netto di prima:
+              l'artwork "si stacca" dal colore pieno con uno stacco quasi impercettibile
+              invece che una linea visibile. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
-                rgba(0,0,0,0) 0%,
-                rgba(0,0,0,0.28) 34%,
-                var(--immersive-color) 64%,
+                rgba(0,0,0,0.6) 0%,
+                rgba(0,0,0,0.22) 12%,
+                rgba(0,0,0,0) 22%,
+                rgba(0,0,0,0) 38%,
+                var(--immersive-color) 92%,
                 var(--immersive-color) 100%);
             transition: opacity 0.25s ease;
         }

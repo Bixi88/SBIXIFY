@@ -1030,34 +1030,34 @@
             position: absolute;
             top: 0; left: 0;
             width: 100%;
-            height: 72%;
+            height: 80%;
             object-fit: cover;
         }
-        /* Sfumatura in due parti:
-           1) In alto, un velo scuro che si dissolve rapidamente (0-20%): serve solo a
-              rendere leggibili "In riproduzione"/nome playlist sopra copertine chiare o
-              molto dettagliate, senza scurire visibilmente il resto dell'artwork sotto.
-           2) Verso il basso, una copertura lunga e pesante (dal 30% al 72%, cioè lungo
-              tutta la parte restante dell'artwork) che scurisce progressivamente prima di
-              rivelare il colore dominante pieno esattamente dove finisce l'immagine (72%),
-              così non c'è alcuna cucitura visibile col colore sottostante. Nota: niente
-              color-mix() qui apposta - alcuni WebView Android non lo supportano, e se una
-              singola funzione della dichiarazione "background" non è valida il browser
-              scarta l'intera regola (motivo per cui la sfumatura precedente non appariva
-              affatto). Solo rgba() e var() dirette, che degradano sempre in sicurezza. */
+        /* Sfumatura in due parti, entrambe nel colore dinamico (non più nero) per
+           unificare header e artwork nello stesso "mood" cromatico del brano:
+           1) In alto, una riga piena nel colore dominante (0-6%) che fa da sfondo a
+              "In riproduzione"/nome playlist, poi si dissolve rapidamente verso l'artwork
+              (fino al 22%) lasciandolo pulito e leggibile.
+           2) Verso il basso, una copertura ancora più lunga e graduale di prima (dal 34%
+              fino all'80%, cioè quasi metà artwork), con più tappe intermedie per una
+              curva morbidissima invece di poche tappe brusche, che rivela il colore pieno
+              esattamente dove finisce l'immagine (80%) senza cuciture visibili. Niente
+              color-mix() (vedi nota già presente prima): solo rgba()/var() dirette. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
-                rgba(0,0,0,0.6) 0%,
-                rgba(0,0,0,0.2) 10%,
-                rgba(0,0,0,0) 20%,
-                rgba(0,0,0,0) 30%,
-                rgba(0,0,0,0.25) 42%,
-                rgba(0,0,0,0.5) 54%,
-                rgba(0,0,0,0.78) 66%,
-                var(--immersive-color) 72%,
+                var(--immersive-color) 0%,
+                var(--immersive-color) 6%,
+                rgba(0,0,0,0) 22%,
+                rgba(0,0,0,0) 34%,
+                rgba(0,0,0,0.12) 44%,
+                rgba(0,0,0,0.26) 52%,
+                rgba(0,0,0,0.42) 60%,
+                rgba(0,0,0,0.6) 68%,
+                rgba(0,0,0,0.8) 75%,
+                var(--immersive-color) 80%,
                 var(--immersive-color) 100%);
             transition: opacity 0.25s ease;
         }

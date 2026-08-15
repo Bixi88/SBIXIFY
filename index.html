@@ -9,7 +9,7 @@
             var savedTheme = localStorage.getItem('sbixify_theme');
             // Il tema Amoled è stato rimosso: chi lo aveva impostato torna a "Moderna".
             if (savedTheme === 'amoled') savedTheme = 'moderna';
-            if (savedTheme === 'walkman') {
+            if (savedTheme === 'walkman' || savedTheme === 'immersive') {
                 document.documentElement.classList.add(savedTheme);
             }
         } catch (e) {}
@@ -44,6 +44,12 @@
             --accent: #FF9A21;
             --text-main: #F3EFE6;
             --text-muted: #8B8794;
+            /* Skin "Immersive": colore dominante scuro estratto dall'artwork in
+               riproduzione (calcolato via canvas in JS, vedi updateImmersiveColorFromArtwork)
+               e url di sfondo del mini player, entrambi con un fallback statico finché
+               nessun brano è ancora stato caricato. */
+            --immersive-color: #0B0B0E;
+            --mini-immersive-bg: none;
         }
 
         html, body {
@@ -81,6 +87,11 @@
             if (savedTheme === 'walkman') {
                 document.getElementById('metaThemeColor')?.setAttribute('content', '#000000');
                 document.getElementById('metaThemeColorDark')?.setAttribute('content', '#000000');
+            } else if (savedTheme === 'immersive') {
+                // Colore d'attesa finché non riparte l'ultimo brano e non viene ricalcolato
+                // quello dinamico dalla sua artwork (vedi updateImmersiveColorFromArtwork).
+                document.getElementById('metaThemeColor')?.setAttribute('content', '#0B0B0E');
+                document.getElementById('metaThemeColorDark')?.setAttribute('content', '#0B0B0E');
             }
         } catch (e) {}
     </script>
@@ -975,6 +986,122 @@
         }
         html.walkman #sheetArtworkGlow { display: none; }
 
+        /* ================= SKIN "IMMERSIVE" (opzionale, attivabile dalle Impostazioni) =================
+           Base quasi-nera e accento bianco per home/lista/impostazioni (canvas neutro che
+           non entra in conflitto con nessuna copertina), mentre Now Playing sheet, schermata
+           lyrics e mini player prendono ognuno un colore DINAMICO calcolato dall'artwork del
+           brano in riproduzione (vedi updateImmersiveColorFromArtwork in JS, che scrive il
+           risultato in --immersive-color). La modalità vinile è disattivata: l'artwork grande
+           non ruota più in un cerchio, diventa invece lo sfondo stesso della schermata. */
+        html.immersive {
+            --bg-main: #0B0B0E;
+            --bg-gradient-top: #0B0B0E;
+            --bg-card: #131316;
+            --bg-input: #17171B;
+            --accent: #FFFFFF;
+            --text-main: #FFFFFF;
+            --text-muted: rgba(255, 255, 255, 0.6);
+        }
+        /* Cornici delle artwork: stesso bianco morbido di Walkman, ma senza forzare la
+           forma circolare (qui le copertine restano squircle come nel tema Moderna). */
+        html.immersive .qcard .circle,
+        html.immersive .settings-playlist-thumb,
+        html.immersive #miniPlayerImgFrame,
+        html.immersive #sheetArtworkFrame,
+        html.immersive .track-thumb-wrap {
+            border-color: rgba(255, 255, 255, 0.55) !important;
+        }
+        /* La rotazione vinile non ha senso in questa skin (l'artwork non è più un disco
+           rotondo ma lo sfondo pieno-schermo): l'intera riga di impostazione va nascosta. */
+        html.immersive .vinyl-toggle-row { display: none; }
+
+        /* ---- Now Playing sheet: artwork come sfondo (niente più vinile rotondo) ---- */
+        html.immersive #vinylSlide { display: none; }
+        html.immersive #nowPlayingSheet { background: var(--immersive-color); }
+        #immersiveBg { display: none; }
+        html.immersive #immersiveBg {
+            display: block;
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 0;
+        }
+        html.immersive #immersiveBgImg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 58%;
+            object-fit: cover;
+        }
+        /* Sfuma dall'artwork (in alto) al colore dominante scuro, che poi riempie da solo
+           tutta la metà inferiore dello schermo: è questo il gradiente dinamico richiesto. */
+        html.immersive #immersiveBg::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom,
+                rgba(0,0,0,0) 0%,
+                rgba(0,0,0,0.28) 34%,
+                var(--immersive-color) 64%,
+                var(--immersive-color) 100%);
+        }
+        /* Testi, minutaggio e pulsanti della Now Playing sheet: sempre bianchi in questa skin. */
+        html.immersive #nowPlayingSheet #sheetHeaderEyebrow,
+        html.immersive #nowPlayingSheet #sheetHeaderPlaylistName,
+        html.immersive #nowPlayingSheet #closeSheetBtn,
+        html.immersive #nowPlayingSheet #playerTrackTitle,
+        html.immersive #nowPlayingSheet .custom-text-muted {
+            color: #fff !important;
+        }
+        html.immersive #repeatBtn, html.immersive #sleepTimerBtn,
+        html.immersive #prevBtn, html.immersive #nextBtn {
+            color: rgba(255, 255, 255, 0.72) !important;
+        }
+        html.immersive #prevBtn:active, html.immersive #nextBtn:active,
+        html.immersive #prevBtn:hover, html.immersive #nextBtn:hover {
+            color: #fff !important;
+        }
+        html.immersive #repeatBtn.active #repeatIcon,
+        html.immersive #sleepTimerBtn.active #sleepTimerIcon {
+            color: #fff !important;
+            -webkit-text-stroke-color: var(--immersive-color);
+        }
+        html.immersive #progressBar, html.immersive #miniProgressBar { background-color: #fff !important; }
+        html.immersive #playPauseBtn { box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+        html.immersive #sheetArtworkGlow, html.immersive #sheetArtworkShadow { display: none; }
+
+        /* ---- Schermata lyrics: sempre il colore dominante come sfondo, testo sempre bianco ---- */
+        html.immersive #lyricsPanel {
+            background: var(--immersive-color);
+            border-radius: 22px;
+        }
+        html.immersive .lyrics-line { color: rgba(255, 255, 255, 0.5); }
+        html.immersive .lyrics-line.active { color: #fff; }
+
+        /* ---- Mini player: sfondo = artwork del brano, UI sempre bianca sopra un velo scuro ---- */
+        html.immersive #miniPlayer {
+            position: relative;
+            overflow: hidden;
+            background-image: var(--mini-immersive-bg);
+            background-size: cover;
+            background-position: center;
+        }
+        html.immersive #miniPlayer::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(120deg, rgba(0,0,0,0.5), rgba(0,0,0,0.74));
+            z-index: 0;
+            pointer-events: none;
+        }
+        html.immersive #miniPlayerContent,
+        html.immersive #miniProgressBarArea {
+            position: relative;
+            z-index: 1;
+        }
+
         /* ---- Font dedicato: now playing sheet, lista canzoni/ricerche, miniplayer ---- */
         html.walkman #nowPlayingSheet,
         html.walkman #trackList,
@@ -1338,6 +1465,14 @@
     <!-- Now Playing Sheet -->
     <div id="nowPlayingSheet" class="flex flex-col select-none custom-bg-main">
 
+        <!-- Sfondo dinamico della skin "Immersive" (invisibile nelle altre skin): l'artwork
+             del brano in riproduzione occupa la metà superiore e sfuma nel colore più usato
+             al suo interno, che riempie da solo il resto dello schermo. Aggiornato via JS
+             (updateImmersiveColorFromArtwork) ogni volta che cambia l'artwork. -->
+        <div id="immersiveBg" aria-hidden="true">
+            <img id="immersiveBgImg" alt="">
+        </div>
+
         <div id="sheetSwipeCloseArea" class="absolute inset-x-0 top-0 z-10 cursor-grab active:cursor-grabbing" style="touch-action: none; bottom: 310px;"></div>
 
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
@@ -1493,6 +1628,7 @@
                         <div class="theme-select-thumb" id="themeSelectThumb"></div>
                         <div class="theme-opt" data-theme="moderna" role="tab">Moderna</div>
                         <div class="theme-opt" data-theme="walkman" role="tab">Walkman</div>
+                        <div class="theme-opt" data-theme="immersive" role="tab">Immersive</div>
                     </div>
                 </div>
                 <div class="theme-select-row vinyl-toggle-row">
@@ -1625,6 +1761,90 @@
         // L'alone ambra sfocato dietro l'artwork va mostrato solo quando c'è davvero
         // un'immagine caricata: appena assegnato un nuovo src resta comunque spento finché
         // il caricamento non va a buon fine, così sopra il placeholder grigio non compare mai.
+        // ================= Skin "Immersive": colore dominante scuro dall'artwork =================
+        // Campiona l'immagine su un canvas piccolo (48x48, veloce), quantizza i pixel in bucket
+        // da 16 livelli per canale e prende il bucket più frequente ("colore più usato").
+        // Se quel colore risultasse troppo chiaro (poco contrasto col testo bianco sopra),
+        // lo scurisce mantenendo la stessa tonalità invece di sostituirlo con un grigio piatto.
+        // Usa un'Image separata (non quella visibile) con crossOrigin, così un eventuale
+        // fallimento CORS della fonte (frequente con CDN esterni) non rompe nulla: si limita
+        // a non produrre un colore, e chi chiama ricade sul fallback statico.
+        function extractDominantDarkColor(url, callback) {
+            try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    try {
+                        const size = 48;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = size; canvas.height = size;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, size, size);
+                        const data = ctx.getImageData(0, 0, size, size).data;
+                        const buckets = {};
+                        for (let i = 0; i < data.length; i += 4) {
+                            const a = data[i + 3];
+                            if (a < 128) continue;
+                            const r = data[i], g = data[i + 1], b = data[i + 2];
+                            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                            // Scarta gli estremi (nero/bianco quasi puri): sono spesso solo
+                            // sfondo/bordi e "vincerebbero" senza essere davvero il colore
+                            // caratterizzante della copertina.
+                            if (lum > 245 || lum < 8) continue;
+                            const key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+                            buckets[key] = (buckets[key] || 0) + 1;
+                        }
+                        let bestKey = null, bestCount = 0;
+                        for (const k in buckets) {
+                            if (buckets[k] > bestCount) { bestCount = buckets[k]; bestKey = k; }
+                        }
+                        let r = 14, g = 14, b = 18;
+                        if (bestKey) {
+                            const parts = bestKey.split(',').map(n => parseInt(n, 10) * 16 + 8);
+                            r = parts[0]; g = parts[1]; b = parts[2];
+                        }
+                        // Scurisce mantenendo la tonalità: se la luminanza supera la soglia,
+                        // scala tutti e tre i canali dello stesso fattore.
+                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                        const maxLum = 68;
+                        if (lum > maxLum) {
+                            const factor = maxLum / lum;
+                            r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);
+                        }
+                        callback('rgb(' + r + ',' + g + ',' + b + ')');
+                    } catch (e) { callback(null); }
+                };
+                img.onerror = () => callback(null);
+                img.src = url;
+            } catch (e) { callback(null); }
+        }
+        // Applica l'artwork corrente come sfondo del layer dinamico nella Now Playing sheet e
+        // come sfondo del mini player: fatto sempre (non solo a tema "Immersive" attivo) così,
+        // se l'utente passa a questa skin dalle Impostazioni mentre un brano è già in corso,
+        // trova subito lo sfondo giusto invece di dover aspettare il brano successivo.
+        function applyImmersiveArtwork(url) {
+            if (!url) return;
+            const bgImg = document.getElementById('immersiveBgImg');
+            if (bgImg) bgImg.src = url;
+            document.documentElement.style.setProperty('--mini-immersive-bg', 'url("' + url + '")');
+        }
+        function updateImmersiveColorFromArtwork(url) {
+            if (!url) return;
+            applyImmersiveArtwork(url);
+            extractDominantDarkColor(url, (color) => {
+                const c = color || 'rgb(11,11,14)';
+                document.documentElement.style.setProperty('--immersive-color', c);
+                if (document.documentElement.classList.contains('immersive')) {
+                    document.getElementById('metaThemeColor')?.setAttribute('content', c);
+                    document.getElementById('metaThemeColorDark')?.setAttribute('content', c);
+                }
+            });
+        }
+        // Ponte verso lo scope separato del selettore tema più in basso nel file (dentro il
+        // listener DOMContentLoaded): serve a riapplicare subito l'artwork corrente quando si
+        // passa manualmente al tema "Immersive" dalle Impostazioni.
+        window.sbixifyApplyImmersiveArtwork = applyImmersiveArtwork;
+
         const sheetArtworkImgEl = document.getElementById('sheetArtworkImg');
         const sheetArtworkFrameEl = document.getElementById('sheetArtworkFrame');
         const sheetArtworkGlowEl = document.getElementById('sheetArtworkGlow');
@@ -1637,6 +1857,7 @@
                 sheetArtworkShadowEl.classList.add('opacity-100');
                 sheetArtworkGlowEl.classList.remove('opacity-0');
                 sheetArtworkGlowEl.classList.add('opacity-20');
+                updateImmersiveColorFromArtwork(sheetArtworkImgEl.src);
             });
             sheetArtworkImgEl.addEventListener('error', () => {
                 sheetArtworkFrameEl.classList.remove('opacity-100');
@@ -2259,15 +2480,28 @@
             // --bg-main a nero puro, quindi anche qui deve diventare nero, non restare sul
             // viola/blu di "Moderna" come accadeva prima (nessun aggiornamento a runtime).
             function updateMetaThemeColor(theme) {
-                const color = (theme === 'walkman') ? '#000000' : '#0D0E12';
+                let color = '#0D0E12';
+                if (theme === 'walkman') color = '#000000';
+                else if (theme === 'immersive') {
+                    // Il colore di questa skin è dinamico (dipende dal brano in riproduzione):
+                    // legge quello già calcolato in --immersive-color invece di uno fisso.
+                    const dynamic = getComputedStyle(document.documentElement).getPropertyValue('--immersive-color').trim();
+                    color = dynamic || '#0B0B0E';
+                }
                 document.getElementById('metaThemeColor')?.setAttribute('content', color);
                 document.getElementById('metaThemeColorDark')?.setAttribute('content', color);
             }
             function setTheme(theme) {
-                if (theme !== 'walkman') theme = 'moderna';
-                document.documentElement.classList.remove('walkman');
+                if (theme !== 'walkman' && theme !== 'immersive') theme = 'moderna';
+                document.documentElement.classList.remove('walkman', 'immersive');
                 if (theme !== 'moderna') document.documentElement.classList.add(theme);
                 applyWalkmanIcons(theme === 'walkman');
+                // Se si passa a "Immersive" con un brano già in corso, riapplica subito il suo
+                // artwork come sfondo invece di aspettare il prossimo cambio brano.
+                if (theme === 'immersive' && window.sbixifyApplyImmersiveArtwork) {
+                    const currentSrc = document.getElementById('sheetArtworkImg')?.src;
+                    if (currentSrc) window.sbixifyApplyImmersiveArtwork(currentSrc);
+                }
                 updateMetaThemeColor(theme);
                 const activeOpt = themeOptEls.find(opt => opt.dataset.theme === theme);
                 themeOptEls.forEach(opt => opt.classList.toggle('active', opt === activeOpt));
@@ -2332,6 +2566,7 @@
             if (themeSelectEl) {
                 let currentTheme = 'moderna';
                 if (document.documentElement.classList.contains('walkman')) currentTheme = 'walkman';
+                else if (document.documentElement.classList.contains('immersive')) currentTheme = 'immersive';
                 setTheme(currentTheme);
                 themeOptEls.forEach(opt => {
                     opt.addEventListener('click', () => setTheme(opt.dataset.theme));

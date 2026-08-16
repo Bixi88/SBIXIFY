@@ -69,6 +69,7 @@
             --immersive-frame-contrast: #0B0B0E;
             --immersive-lyrics-bg: #46464F;
             --immersive-lyrics-text: #ffffff;
+            --immersive-lyrics-muted: #9A98A0;
         }
 
         html, body {
@@ -1184,12 +1185,14 @@
             border-radius: 22px;
         }
         html.immersive .lyrics-line {
-            /* Colore leggermente grigio (non il bianco pieno della riga attiva sotto):
-               dà più risalto alla riga cantata senza un salto di contrasto vistoso -
-               un filo di distinzione, non un vero e proprio "spento" visibile a colpo
-               d'occhio. */
-            color: #C7C7C7;
-            opacity: 0.5;
+            /* Non più un grigio fisso uguale su ogni copertina, ma il testo "affondato"
+               verso il colore di sfondo della schermata (--immersive-lyrics-muted,
+               calcolato insieme agli altri: bianco mescolato con lo sfondo scuro reale del
+               brano, non un grigio neutro scollegato) - così la riga non cantata sembra
+               più sullo sfondo invece che semplicemente "spenta", e resta coerente con il
+               resto della skin che segue sempre la tonalità del brano in ascolto. */
+            color: var(--immersive-lyrics-muted);
+            opacity: 0.6;
         }
         html.immersive .lyrics-line.active {
             color: var(--immersive-lyrics-text);
@@ -2135,6 +2138,14 @@
                 // una volta sola prima del ramo perché non cambia più tra i due casi.
                 root.setProperty('--immersive-lyrics-bg', `rgb(${r},${g},${b})`);
                 root.setProperty('--immersive-lyrics-text', '#ffffff');
+                // Testo non cantato: bianco "affondato" verso lo sfondo scuro reale del
+                // brano (r,g,b sopra) invece di un grigio neutro fisso uguale su ogni
+                // copertina - così sembra letteralmente più sullo sfondo, coerente con la
+                // tonalità del brano invece di essere scollegato da essa. Mix 50/50: abbastanza
+                // per notarsi rispetto al bianco pieno della riga attiva, non così tanto da
+                // sparire (l'opacità sotto fa il resto del lavoro).
+                const mutedR = Math.round((r + 255) / 2), mutedG = Math.round((g + 255) / 2), mutedB = Math.round((b + 255) / 2);
+                root.setProperty('--immersive-lyrics-muted', `rgb(${mutedR},${mutedG},${mutedB})`);
                 // Copertine grigie/nere (isGreyscale, vedi extractDominantDarkColor): niente
                 // colore derivato, un bianco fisso leggermente sporco (non l'ottico #fff puro,
                 // così non stona accostato a una copertina scura) con testo nero, l'unica

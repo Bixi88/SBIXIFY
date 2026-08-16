@@ -2001,14 +2001,39 @@
                             const parts = bestKey.split(',').map(n => parseInt(n, 10) * 16 + 8);
                             rawR = parts[0]; rawG = parts[1]; rawB = parts[2];
                         }
-                        // Copertine grigie/nere (bianco&nero, foto desature, artwork monocromatiche):
-                        // il colore dominante ha poca/nessuna saturazione (canali quasi identici tra
-                        // loro). In questo caso la variante "vivida" sotto - pensata per colori veri -
-                        // produrrebbe un grigio/oliva slavato invece di un vero accento; meglio
-                        // rilevarlo qui (differenza tra canale più chiaro e più scuro sotto soglia) e
-                        // segnalarlo al chiamante, che sceglierà un bianco sporco fisso al posto del
-                        // colore derivato dall'artwork.
-                        const isGreyscale = (Math.max(rawR, rawG, rawB) - Math.min(rawR, rawG, rawB)) < 18;
+                        // Ricerca di un candidato "colorato" per l'accento (evidenziazione riga
+                        // in ascolto, mini player): il bucket più frequente in assoluto
+                        // (rawR/G/B sopra, usato per lo sfondo scuro di base) è spesso
+                        // un'area neutra/di sfondo della foto - cielo, muro, ombra - anche
+                        // quando il soggetto ha colori vivaci altrove nella copertina. Usare
+                        // SEMPRE quel bucket come base per l'accento affossava troppe
+                        // copertine a colori nel trattamento "bianco" pensato solo per quelle
+                        // davvero in bianco e nero/monocrome. Si scorrono quindi i bucket in
+                        // ordine di frequenza e si sceglie il primo abbastanza saturo (spread
+                        // tra canale più chiaro e più scuro) E abbastanza popolato (non un
+                        // pugno isolato di pixel, altrimenti sarebbe rumore) da essere un vero
+                        // colore caratterizzante della copertina.
+                        const sortedBuckets = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
+                        const MIN_COLOR_SPREAD = 28;
+                        const MIN_COUNT_RATIO = 0.12;
+                        let vividBaseR = null, vividBaseG = null, vividBaseB = null;
+                        for (const [key, count] of sortedBuckets) {
+                            // Ordinati per frequenza: sotto questa soglia è solo rumore, si può
+                            // interrompere la ricerca invece di continuare a scorrere il resto.
+                            if (count < bestCount * MIN_COUNT_RATIO) break;
+                            const parts = key.split(',').map(n => parseInt(n, 10) * 16 + 8);
+                            const spread = Math.max(...parts) - Math.min(...parts);
+                            if (spread >= MIN_COLOR_SPREAD) {
+                                vividBaseR = parts[0]; vividBaseG = parts[1]; vividBaseB = parts[2];
+                                break;
+                            }
+                        }
+                        // Nessun bucket sufficientemente saturo/popolato trovato: la copertina è
+                        // davvero grigia/nera/monocroma (non solo "il bucket più frequente lo
+                        // era"), qui scatta il trattamento dedicato (bianco fisso + testo nero,
+                        // vedi updateImmersiveColorFromArtwork).
+                        const isGreyscale = vividBaseR === null;
+                        if (isGreyscale) { vividBaseR = rawR; vividBaseG = rawG; vividBaseB = rawB; }
                         // Versione scura (Now Playing sheet, lyrics, mini player): scurisce
                         // mantenendo la tonalità, scalando sempre verso il basso se supera
                         // la soglia. Soglia bassa apposta (non solo "se troppo chiaro"):
@@ -2023,10 +2048,11 @@
                         }
                         // Versione "vivida" (evidenziazione del brano in ascolto in home e
                         // lista canzoni, vedi reference YT Music): stessa tonalità del
-                        // colore dominante, ma riportata in una fascia di luminosità
-                        // intermedia invece che quasi-nera, così la riga risulta colorata
-                        // e leggibile invece di confondersi con lo sfondo scuro della skin.
-                        let vr = rawR, vg = rawG, vb = rawB;
+                        // bucket colorato trovato sopra (vividBaseR/G/B, non più il bucket
+                        // neutro rawR/G/B), riportata in una fascia di luminosità intermedia
+                        // invece che quasi-nera, così la riga risulta colorata e leggibile
+                        // invece di confondersi con lo sfondo scuro della skin.
+                        let vr = vividBaseR, vg = vividBaseG, vb = vividBaseB;
                         const vLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
                         const minVividLum = 90, maxVividLum = 215;
                         if (vLum > 0 && vLum < minVividLum) {
@@ -2081,6 +2107,13 @@
                 // Now Playing/mini player. Il testo passa a nero o bianco a seconda di
                 // quanto risulta chiaro quel colore, per restare leggibile anche su
                 // copertine chiare (vedi screenshot di reference).
+                // Sfondo/testo della schermata lyrics: SEMPRE lo stesso quasi-nero dinamico
+                // della Now Playing sheet (--immersive-color, calcolato sull'artwork reale,
+                // mai un nero fisso piatto) con testo bianco - non più legato al ramo
+                // grigio/colorato qui sotto, che ora riguarda solo accento/cornice. Impostato
+                // una volta sola prima del ramo perché non cambia più tra i due casi.
+                root.setProperty('--immersive-lyrics-bg', `rgb(${r},${g},${b})`);
+                root.setProperty('--immersive-lyrics-text', '#ffffff');
                 // Copertine grigie/nere (isGreyscale, vedi extractDominantDarkColor): niente
                 // colore derivato, un bianco fisso leggermente sporco (non l'ottico #fff puro,
                 // così non stona accostato a una copertina scura) con testo nero, l'unica
@@ -2094,22 +2127,12 @@
                     // risultava troppo duro - un grigio medio-chiaro contrasta comunque bene
                     // ma resta meno "a strappo".
                     root.setProperty('--immersive-frame-contrast', '#ABABAB');
-                    // Lyrics: qui NON riusano il bianco sporco di --immersive-accent (troppo
-                    // piatto/slavato per un intero schermo di testo) ma nemmeno un nero fisso
-                    // ("non voglio mai le lyrics in nero") - prendono lo stesso quasi-nero
-                    // calcolato per la Now Playing sheet (--immersive-color, dinamico
-                    // sull'artwork reale, mai un nero puro piatto) con testo bianco, la
-                    // combinazione a contrasto più alto per il bianco.
-                    root.setProperty('--immersive-lyrics-bg', `rgb(${r},${g},${b})`);
-                    root.setProperty('--immersive-lyrics-text', '#ffffff');
                     document.documentElement.classList.add('immersive-grey');
                 } else {
                     const vividLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
                     root.setProperty('--immersive-accent', `rgb(${vr},${vg},${vb})`);
                     root.setProperty('--immersive-accent-text', vividLum > 150 ? '#181818' : '#ffffff');
                     root.setProperty('--immersive-frame-contrast', `rgb(${r},${g},${b})`);
-                    root.setProperty('--immersive-lyrics-bg', `rgb(${vr},${vg},${vb})`);
-                    root.setProperty('--immersive-lyrics-text', vividLum > 150 ? '#181818' : '#ffffff');
                     document.documentElement.classList.remove('immersive-grey');
                 }
                 const c = `rgb(${r},${g},${b})`;
@@ -4960,8 +4983,11 @@
         // Nome "pulito" della playlist: le pagine Spotify aggiungono spesso, dopo il nome
         // vero, un riferimento all'autore/creatore (es. "Nome - playlist by Autore",
         // "Nome - Autore", "Nome by Autore") e la dicitura "Spotify". Li scartiamo
-        // entrambi: usato sia per il titolo mostrato in cima ai risultati sia (con in
-        // più il limite a 3 parole) per i "Recenti".
+        // entrambi. Poi, richiesta esplicita: il nome della playlist non deve MAI superare
+        // le 3 parole in nessuna schermata dell'app (titolo risultati, etichetta Now
+        // Playing/Immersive, Recenti in home, elenco Impostazioni...) - tagliato qui, alla
+        // fonte, così ogni punto che lo mostra lo eredita già corretto invece di dover
+        // applicare lo stesso limite N volte in giro per il codice.
         function cleanSpotifyPlaylistName(name) {
             let cleaned = (name || '').trim();
             cleaned = cleaned.split(/·|\s+(?:[-|–•]\s*(?:playlist\s+)?by\s+|[-|–•]\s+|by\s+)/i)[0].trim();
@@ -4969,17 +4995,14 @@
                 .replace(/\bspotify\b/gi, '')
                 .replace(/\s{2,}/g, ' ')
                 .trim();
+            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
             return cleaned || 'Playlist';
         }
 
-        // Nome della playlist così come mostrato nei "Recenti" (home e Impostazioni):
-        // le pagine Spotify aggiungono spesso, dopo il nome vero della playlist, un
-        // riferimento all'autore/creatore (es. "Nome - playlist by Autore", "Nome - Autore",
-        // "Nome by Autore"): lo scartiamo subito, tenendo solo la parte prima del
-        // separatore, così l'autore non finisce mai nei Recenti. Poi via la parola
-        // "Spotify" (sono tutte playlist Spotify, è ridondante), e al massimo 3 parole.
+        // Alias storico: cleanSpotifyPlaylistName ora limita già a 3 parole da sola, questa
+        // resta solo per non toccare le chiamate già in giro nel codice.
         function formatRecentPlaylistName(name) {
-            return cleanSpotifyPlaylistName(name).split(/\s+/).slice(0, 3).join(' ');
+            return cleanSpotifyPlaylistName(name);
         }
 
         // Copertina di ripiego per una playlist Spotify senza cover propria: pesca un

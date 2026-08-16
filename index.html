@@ -127,6 +127,10 @@
     <!-- Font usato solo dallo skin "Walkman" (vedi regole html.walkman più sotto): Roboto al posto
          di Inter, per un look più vicino ai player hi-fi/Android nativi che questo skin imita. -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Solo skin Immersive: font più geometrico/arrotondato (vedi html.immersive
+         #playerTrackTitle e blocco tipografia immersive più sotto) per avvicinarsi
+         alla reference fornita dall'utente, al posto di Inter usato ovunque altrove. -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Preconnect verso i domini YouTube: apre in anticipo la connessione (DNS+TLS)
          così, quando parte davvero il primo player.loadVideoById(), non si paga più
@@ -1103,7 +1107,33 @@
             width: 100%;
             height: 80%;
             object-fit: cover;
+            /* Punch visivo (solo display, non tocca l'estrazione colore che lavora su
+               un'Image separata in extractDominantDarkColor): molte thumbnail YouTube
+               sono più piatte/lavate della cover ufficiale, questo le avvicina alla
+               resa più satura/contrastata di riferimento (nero più pieno in alto,
+               blu/colori più ricchi, luci che risaltano di più). */
+            filter: contrast(1.14) saturate(1.3) brightness(0.95);
         }
+
+        /* ---- Tipografia dedicata Immersive: titolo/artista/nome playlist ----
+           Solo in questa skin, al posto di Inter (usato ovunque nel resto dell'app):
+           Poppins, più geometrico/arrotondato, per la resa "Spotify-style" della
+           reference. Titolo in 700/800 (peso maggiore), artista/nome playlist in
+           600 (peso medio) - vedi font-weight già impostati inline sugli elementi,
+           qui si sovrascrive solo il font-family. */
+        html.immersive #playerTrackTitle,
+        html.immersive #playerTrackChannel,
+        html.immersive #immersivePlaylistBtn,
+        html.immersive #miniPlayerTitle,
+        html.immersive #miniPlayerChannel,
+        html.immersive .home-track-meta .t-title,
+        html.immersive .home-track-meta .t-sub,
+        html.immersive .track-row .text-sm,
+        html.immersive .track-row .text-xs,
+        html.immersive .qcard .name {
+            font-family: 'Poppins', sans-serif;
+        }
+        html.immersive #playerTrackTitle { font-weight: 800; letter-spacing: -0.01em; }
         /* Sfumatura SOLO in basso (non più in alto: l'header lì non ha più testo da
            proteggere, tolto nella richiesta precedente). Resta trasparente per la prima
            parte dell'artwork, poi scurisce progressivamente verso il basso usando le

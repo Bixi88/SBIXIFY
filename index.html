@@ -2133,10 +2133,10 @@
                     root.setProperty('--immersive-accent', '#E8E8E6');
                     root.setProperty('--immersive-accent-text', '#111111');
                     // Cornice a contrasto (mini player + riga in ascolto, vedi CSS): su
-                    // pillola/mini player quasi bianchi il nero pieno di --immersive-color
-                    // risultava troppo duro - un grigio medio-chiaro contrasta comunque bene
-                    // ma resta meno "a strappo".
-                    root.setProperty('--immersive-frame-contrast', '#ABABAB');
+                    // pillola/mini player quasi bianchi un grigio medio-chiaro (provato prima)
+                    // si perdeva contro artwork altrettanto chiare (vedi screenshot "Mayday"),
+                    // il grigio scuro qui resta leggibile qualunque sia il tono della copertina.
+                    root.setProperty('--immersive-frame-contrast', '#4A4A4A');
                     document.documentElement.classList.add('immersive-grey');
                 } else {
                     const vividLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;

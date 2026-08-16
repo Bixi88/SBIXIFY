@@ -55,8 +55,9 @@
             --immersive-color-75: rgba(11,11,14,0.75);
             --immersive-color-90: rgba(11,11,14,0.9);
             /* Variante "vivida" dello stesso colore dominante (non quasi-nera come sopra):
-               usata per evidenziare la riga del brano in ascolto in home/lista canzoni
-               (vedi .track-row.playing/.home-track-row.playing più sotto), calcolata in
+               usata per evidenziare la riga del brano in ascolto nella lista canzoni
+               (vedi .track-row.playing più sotto, non più anche in home) e per il tile
+               della scheda "Immersive" selezionata in Impostazioni, calcolata in
                updateImmersiveColorFromArtwork insieme al testo di contrasto giusto. */
             --immersive-accent: #46464F;
             --immersive-accent-text: #ffffff;
@@ -795,6 +796,13 @@
 
         /* ================= HOME: griglia "Playlist" (fissa, 3 colonne) + colonna "Canzoni" ================= */
         .quick-eyebrow { padding:22px 24px 4px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); font-weight:600; }
+        /* La prima label ("Playlist", subito dopo l'header) cade dentro la sfumatura di
+           56px di .home-header::after qui sopra e risultava un po' sfocata/lavata appena
+           aperta la home. Un po' più di spazio sopra SOLO per lei (non per "Canzoni" più
+           sotto, fuori da quella zona) la porta oltre la sfumatura; essendo padding e non
+           margin negativo altrove, spinge naturalmente in basso anche tutto quello che
+           segue nel flusso (griglia playlist, canzoni), niente altro da ritoccare. */
+        .home-header + .quick-eyebrow { padding-top: 34px; }
         .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:22px 14px; padding:14px 24px 20px; justify-items:center; }
         .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; max-width:104px; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
@@ -1048,8 +1056,7 @@
            e l'accento risalta bene - si usa il colore più scuro (--immersive-color) invece,
            così l'anello attorno alla thumbnail si vede sempre, anche sulle copertine chiare. */
         html.immersive #miniPlayerImgFrame,
-        html.immersive .track-row.playing .track-thumb-wrap,
-        html.immersive .home-track-row.playing .track-thumb-wrap {
+        html.immersive .track-row.playing .track-thumb-wrap {
             border-color: var(--immersive-frame-contrast) !important;
         }
         /* La rotazione vinile non ha senso in questa skin (l'artwork non è più un disco
@@ -1177,7 +1184,11 @@
             border-radius: 22px;
         }
         html.immersive .lyrics-line {
-            color: var(--immersive-lyrics-text);
+            /* Colore leggermente grigio (non il bianco pieno della riga attiva sotto):
+               dà più risalto alla riga cantata senza un salto di contrasto vistoso -
+               un filo di distinzione, non un vero e proprio "spento" visibile a colpo
+               d'occhio. */
+            color: #C7C7C7;
             opacity: 0.5;
         }
         html.immersive .lyrics-line.active {
@@ -1241,46 +1252,35 @@
             border-radius: 14px;
             transition: background-color 0.45s ease;
         }
-        html.immersive .track-row.playing,
-        html.immersive .home-track-row.playing {
+        /* La pillola colorata del brano in ascolto (sfondo --immersive-accent) resta
+           riservata alla lista canzoni (.track-row, risultati/playlist): in home
+           (.home-track-row) non c'è più alcuna evidenziazione, la riga del brano corrente
+           resta identica alle altre come richiesto. */
+        html.immersive .track-row.playing {
             background: var(--immersive-accent);
             /* Pillola un po' più bassa e più larga ai lati rispetto alla riga normale:
                il padding orizzontale extra è compensato da un margine negativo della stessa
-               entità (differenza rispetto al padding di base della riga, 0 su .track-row,
-               2px su .home-track-row), così il contenuto (thumbnail, testo) resta allineato
-               a dov'era prima e solo lo sfondo colorato si allarga oltre i bordi consueti
-               della riga, "mangiando" un po' del padding del contenitore attorno. */
+               entità (differenza rispetto al padding di base della riga, 0 su .track-row),
+               così il contenuto (thumbnail, testo) resta allineato a dov'era prima e solo
+               lo sfondo colorato si allarga oltre i bordi consueti della riga, "mangiando"
+               un po' del padding del contenitore attorno. */
             padding-top: 7px;
             padding-bottom: 7px;
-        }
-        html.immersive .track-row.playing {
             padding-left: 12px;
             padding-right: 12px;
             margin-left: -12px;
             margin-right: -12px;
         }
-        html.immersive .home-track-row.playing {
-            padding-left: 12px;
-            padding-right: 12px;
-            margin-left: -10px;
-            margin-right: -10px;
-        }
-        html.immersive .track-row.playing::after,
-        html.immersive .home-track-row.playing::after {
+        html.immersive .track-row.playing::after {
             display: none;
         }
         /* Il testo passa a nero o bianco (--immersive-accent-text, calcolato insieme al
            colore) a seconda di quanto risulta chiara la tonalità dominante, per restare
            leggibile anche su copertine chiare come nella reference. */
         html.immersive .track-row.playing p.text-sm,
-        html.immersive .track-row.playing p.text-xs,
-        html.immersive .home-track-row.playing .t-title,
-        html.immersive .home-track-row.playing .t-sub {
+        html.immersive .track-row.playing p.text-xs {
             color: var(--immersive-accent-text) !important;
             transition: color 0.45s ease;
-        }
-        html.immersive .home-track-row.playing .t-sub {
-            opacity: 0.75;
         }
 
         /* ---- Font dedicato: now playing sheet, lista canzoni/ricerche, miniplayer ---- */
@@ -1340,6 +1340,16 @@
             transition: color .22s ease;
         }
         .theme-opt.active { color:#14120e; }
+        /* Scheda "Immersive" selezionata: il tile che la evidenzia segue anche lui il
+           colore dinamico dell'artwork (--immersive-accent, stesso schema di pillole/mini
+           player), non più il bianco fisso di --accent - coerente col resto della skin.
+           Il testo passa a chiaro o scuro (--immersive-accent-text, calcolato insieme al
+           colore in base al contrasto) esattamente come altrove, invece del nero fisso
+           pensato per il bianco statico di prima. Nessuna condizione su quale scheda sia
+           "active" qui: quando html.immersive è applicata la scheda attiva è sempre e solo
+           quella "Immersive" (le tre skin sono mutuamente esclusive). */
+        html.immersive .theme-select-thumb { background: var(--immersive-accent); }
+        html.immersive .theme-opt.active { color: var(--immersive-accent-text); }
 
         /* ================= Rotazione "vinile" (now playing sheet) =================
            L'immagine gira lentamente (1 giro ogni 20s, lineare come un vero piatto)
@@ -2111,11 +2121,12 @@
                 root.setProperty('--immersive-color-55', `rgba(${r},${g},${b},0.55)`);
                 root.setProperty('--immersive-color-75', `rgba(${r},${g},${b},0.75)`);
                 root.setProperty('--immersive-color-90', `rgba(${r},${g},${b},0.9)`);
-                // Colore "vivido" per l'evidenziazione del brano in ascolto in home e
-                // lista canzoni (vedi .track-row.playing/.home-track-row.playing nel CSS):
-                // stessa tonalità del brano, ma più chiara/satura del quasi-nero usato per
-                // Now Playing/mini player. Il testo passa a nero o bianco a seconda di
-                // quanto risulta chiaro quel colore, per restare leggibile anche su
+                // Colore "vivido" per l'evidenziazione del brano in ascolto nella lista
+                // canzoni (vedi .track-row.playing nel CSS, non più anche in home) e per il
+                // tile della scheda "Immersive" in Impostazioni: stessa tonalità del brano,
+                // ma più chiara/satura del quasi-nero usato per Now Playing/mini player. Il
+                // testo passa a nero o bianco a seconda di quanto risulta chiaro quel colore,
+                // per restare leggibile anche su
                 // copertine chiare (vedi screenshot di reference).
                 // Sfondo/testo della schermata lyrics: SEMPRE lo stesso quasi-nero dinamico
                 // della Now Playing sheet (--immersive-color, calcolato sull'artwork reale,
@@ -4419,9 +4430,11 @@
             }
 
             section.classList.remove('hidden');
-            // Riga del brano attualmente in ascolto (per l'evidenziazione dinamica della
-            // skin Immersive, vedi .home-track-row.playing nel CSS): confrontata per id
-            // YouTube con nowPlayingTracks/nowPlayingIndex invece di assumere sempre
+            // Riga del brano attualmente in ascolto: la classe "playing" viene ancora
+            // aggiunta qui per completezza/uso futuro, ma in skin Immersive non ha più
+            // alcun effetto visivo in home (l'evidenziazione è stata rimossa, riservata
+            // solo alla lista canzoni - vedi .track-row.playing nel CSS). Confrontata per
+            // id YouTube con nowPlayingTracks/nowPlayingIndex invece di assumere sempre
             // l'indice 0, così resta corretta anche nei casi limite in cui questa lista
             // non fosse ancora stata riordinata da un addRecentTrack per il brano corrente.
             const currentPlayingId = (typeof nowPlayingIndex !== 'undefined' && nowPlayingTracks[nowPlayingIndex])

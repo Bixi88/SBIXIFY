@@ -60,6 +60,14 @@
                updateImmersiveColorFromArtwork insieme al testo di contrasto giusto. */
             --immersive-accent: #46464F;
             --immersive-accent-text: #ffffff;
+            /* Fallback per le due varianti aggiunte per le copertine grigie/nere: cornice a
+               contrasto (mini player + riga in ascolto) e sfondo/testo della schermata
+               lyrics, entrambe calcolate insieme alle altre in
+               updateImmersiveColorFromArtwork (vedi lì il perché non riusano semplicemente
+               --immersive-color/--immersive-accent). */
+            --immersive-frame-contrast: #0B0B0E;
+            --immersive-lyrics-bg: #46464F;
+            --immersive-lyrics-text: #ffffff;
         }
 
         html, body {
@@ -1042,7 +1050,7 @@
         html.immersive #miniPlayerImgFrame,
         html.immersive .track-row.playing .track-thumb-wrap,
         html.immersive .home-track-row.playing .track-thumb-wrap {
-            border-color: var(--immersive-color) !important;
+            border-color: var(--immersive-frame-contrast) !important;
         }
         /* La rotazione vinile non ha senso in questa skin (l'artwork non è più un disco
            rotondo ma lo sfondo pieno-schermo): l'intera riga di impostazione va nascosta. */
@@ -1101,7 +1109,7 @@
             position: absolute;
             inset: 0;
             z-index: 5;
-            background: var(--immersive-accent);
+            background: var(--immersive-lyrics-bg);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1165,15 +1173,15 @@
            quell'accento (--immersive-accent-text, calcolato insieme al colore) - così resta
            leggibile anche su copertine chiare, non solo bianco fisso su sfondo sempre scuro. */
         html.immersive #lyricsPanel {
-            background: var(--immersive-accent);
+            background: var(--immersive-lyrics-bg);
             border-radius: 22px;
         }
         html.immersive .lyrics-line {
-            color: var(--immersive-accent-text);
+            color: var(--immersive-lyrics-text);
             opacity: 0.5;
         }
         html.immersive .lyrics-line.active {
-            color: var(--immersive-accent-text);
+            color: var(--immersive-lyrics-text);
             opacity: 1;
         }
 
@@ -1206,6 +1214,18 @@
         html.immersive #miniProgressBar {
             background: var(--immersive-accent-text) !important;
             opacity: 0.85;
+        }
+        /* Copertine grigie/nere (classe "immersive-grey" su <html>, aggiunta/tolta in
+           updateImmersiveColorFromArtwork insieme alle altre variabili): SOLO il pulsante
+           play/pause del mini player si inverte, cerchio nero e icona bianca, invece del
+           solito cerchio bianco/icona scura (--accent è bianco fisso in questa skin, vedi
+           html.immersive più sopra) - su un mini player già quasi bianco il pulsante bianco
+           spariva quasi del tutto. Il pulsante grande della Now Playing sheet (#playPauseBtn)
+           NON è incluso: lì sotto c'è sempre l'artwork/gradiente scuro, mai il bianco piatto
+           del mini player, quindi il contrasto originale va già bene. */
+        html.immersive.immersive-grey #miniPlayPauseBtn {
+            background-color: var(--immersive-color) !important;
+            color: #ffffff !important;
         }
 
         /* ---- Home "Canzoni" e lista tracce: riga del brano in ascolto evidenziata con
@@ -2069,10 +2089,28 @@
                 if (isGreyscale) {
                     root.setProperty('--immersive-accent', '#E8E8E6');
                     root.setProperty('--immersive-accent-text', '#111111');
+                    // Cornice a contrasto (mini player + riga in ascolto, vedi CSS): su
+                    // pillola/mini player quasi bianchi il nero pieno di --immersive-color
+                    // risultava troppo duro - un grigio medio-chiaro contrasta comunque bene
+                    // ma resta meno "a strappo".
+                    root.setProperty('--immersive-frame-contrast', '#ABABAB');
+                    // Lyrics: qui NON riusano il bianco sporco di --immersive-accent (troppo
+                    // piatto/slavato per un intero schermo di testo) ma nemmeno un nero fisso
+                    // ("non voglio mai le lyrics in nero") - prendono lo stesso quasi-nero
+                    // calcolato per la Now Playing sheet (--immersive-color, dinamico
+                    // sull'artwork reale, mai un nero puro piatto) con testo bianco, la
+                    // combinazione a contrasto più alto per il bianco.
+                    root.setProperty('--immersive-lyrics-bg', `rgb(${r},${g},${b})`);
+                    root.setProperty('--immersive-lyrics-text', '#ffffff');
+                    document.documentElement.classList.add('immersive-grey');
                 } else {
                     const vividLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
                     root.setProperty('--immersive-accent', `rgb(${vr},${vg},${vb})`);
                     root.setProperty('--immersive-accent-text', vividLum > 150 ? '#181818' : '#ffffff');
+                    root.setProperty('--immersive-frame-contrast', `rgb(${r},${g},${b})`);
+                    root.setProperty('--immersive-lyrics-bg', `rgb(${vr},${vg},${vb})`);
+                    root.setProperty('--immersive-lyrics-text', vividLum > 150 ? '#181818' : '#ffffff');
+                    document.documentElement.classList.remove('immersive-grey');
                 }
                 const c = `rgb(${r},${g},${b})`;
                 if (document.documentElement.classList.contains('immersive')) {
@@ -2758,6 +2796,11 @@
                 if (theme !== 'walkman' && theme !== 'immersive') theme = 'moderna';
                 const wasImmersive = document.documentElement.classList.contains('immersive');
                 document.documentElement.classList.remove('walkman', 'immersive');
+                // "immersive-grey" (vedi html.immersive.immersive-grey #miniPlayPauseBtn nel
+                // CSS) è rilevante solo dentro la skin Immersive: pulita qui a ogni cambio
+                // skin così non resta "appesa" per errore se si rientra in Immersive prima
+                // che updateImmersiveColorFromArtwork sia già passata a ricalcolarla.
+                document.documentElement.classList.remove('immersive-grey');
                 if (theme !== 'moderna') document.documentElement.classList.add(theme);
                 applyWalkmanIcons(theme === 'walkman');
                 // Se si passa a "Immersive" con un brano già in corso, riapplica subito il suo

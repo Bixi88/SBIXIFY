@@ -2039,9 +2039,19 @@
                         // la soglia. Soglia bassa apposta (non solo "se troppo chiaro"):
                         // così il colore resta sempre scuro come nella reference, anche
                         // partendo da un artwork dai colori vivaci.
-                        let r = rawR, g = rawG, b = rawB;
+                        // Versione scura (Now Playing sheet, lyrics, mini player): parte dal
+                        // bucket "colorato" (vividBaseR/G/B, lo stesso trovato sopra per
+                        // l'accento) invece del bucket neutro più frequente (rawR/G/B) - così
+                        // la tonalità scura resta caratterizzante della copertina invece di
+                        // risultare lavata/spenta quando il pixel più frequente è un'area
+                        // neutra (cielo, ombra, muro). Poi scurisce comunque mantenendo la
+                        // tonalità, scalando sempre verso il basso se supera la soglia (un
+                        // filo più alta di prima: abbastanza per leggere il colore, non tanto
+                        // da compromettere il contrasto del testo bianco sopra, sempre fisso
+                        // in questa skin).
+                        let r = vividBaseR, g = vividBaseG, b = vividBaseB;
                         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                        const maxLum = 30;
+                        const maxLum = 42;
                         if (lum > maxLum) {
                             const factor = maxLum / lum;
                             r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);

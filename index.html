@@ -127,10 +127,13 @@
     <!-- Font usato solo dallo skin "Walkman" (vedi regole html.walkman più sotto): Roboto al posto
          di Inter, per un look più vicino ai player hi-fi/Android nativi che questo skin imita. -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <!-- Solo skin Immersive: font più geometrico/arrotondato (vedi html.immersive
-         #playerTrackTitle e blocco tipografia immersive più sotto) per avvicinarsi
-         alla reference fornita dall'utente, al posto di Inter usato ovunque altrove. -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Solo skin Immersive: General Sans (Fontshare, licenza libera anche commerciale),
+         il sostituto free più vicino a "Circular" (font proprietario di Spotify, usato
+         nella reference fornita dall'utente) - molto più vicino di Poppins (scartato: qui
+         troppo "geometrico perfetto", mentre Circular/General Sans sono un grottesco con
+         terminali smussati, non forme totalmente circolari). Vedi blocco tipografia
+         immersive più sotto per dove viene applicato. -->
+    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap" rel="stylesheet">
 
     <!-- Preconnect verso i domini YouTube: apre in anticipo la connessione (DNS+TLS)
          così, quando parte davvero il primo player.loadVideoById(), non si paga più
@@ -1112,15 +1115,15 @@
                sono più piatte/lavate della cover ufficiale, questo le avvicina alla
                resa più satura/contrastata di riferimento (nero più pieno in alto,
                blu/colori più ricchi, luci che risaltano di più). */
-            filter: contrast(1.14) saturate(1.3) brightness(0.95);
+            filter: contrast(1.2) saturate(1.4) brightness(0.94);
         }
 
         /* ---- Tipografia dedicata Immersive: titolo/artista/nome playlist ----
            Solo in questa skin, al posto di Inter (usato ovunque nel resto dell'app):
-           Poppins, più geometrico/arrotondato, per la resa "Spotify-style" della
-           reference. Titolo in 700/800 (peso maggiore), artista/nome playlist in
-           600 (peso medio) - vedi font-weight già impostati inline sugli elementi,
-           qui si sovrascrive solo il font-family. */
+           General Sans (vedi link Fontshare in <head>), sostituto free più vicino a
+           Circular di Spotify. Titolo in 700 (peso maggiore), artista/nome playlist in
+           600 - vedi font-weight già impostati inline sugli elementi, qui si
+           sovrascrive solo il font-family. */
         html.immersive #playerTrackTitle,
         html.immersive #playerTrackChannel,
         html.immersive #immersivePlaylistBtn,
@@ -1131,9 +1134,11 @@
         html.immersive .track-row .text-sm,
         html.immersive .track-row .text-xs,
         html.immersive .qcard .name {
-            font-family: 'Poppins', sans-serif;
+            font-family: 'General Sans', 'Inter', sans-serif;
         }
-        html.immersive #playerTrackTitle { font-weight: 800; letter-spacing: -0.01em; }
+        html.immersive #playerTrackTitle { font-weight: 700; letter-spacing: -0.01em; }
+
+
         /* Sfumatura SOLO in basso (non più in alto: l'header lì non ha più testo da
            proteggere, tolto nella richiesta precedente). Resta trasparente per la prima
            parte dell'artwork, poi scurisce progressivamente verso il basso usando le
@@ -2503,22 +2508,24 @@
         // Immersive - dove l'artwork riempie l'80% dello schermo - risultava visibilmente
         // sfocato) si prova sddefault (640x480) e poi hqdefault (480x360), che quasi sempre
         // esistono anche quando il maxres manca.
-        function displayArtwork(imgElement, videoId) {
-            if (!imgElement || !videoId) return Promise.resolve();
-
+        // Estratta da displayArtwork (sotto) per poter risolvere la URL migliore anche
+        // SENZA un <img> di destinazione: serve a upgradeImmersiveArtworkQuality (vedi più
+        // sotto) per recuperare la qualità massima anche per i brani importati da Spotify,
+        // che altrimenti restano fermi al thumbnail dato dalla YouTube Data API (spesso
+        // "medium"/320x180, mai maxres) invece di provare le URL dirette img.youtube.com.
+        function resolveBestArtworkUrl(videoId) {
+            if (!videoId) return Promise.resolve(null);
             const candidates = [
                 `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                 `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
                 `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
                 `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
             ];
-
             return new Promise((resolve) => {
                 function tryNext(i) {
                     if (i >= candidates.length - 1) {
                         // Ultima spiaggia: mqdefault esiste sempre, non serve verificarlo.
-                        imgElement.src = candidates[candidates.length - 1];
-                        resolve();
+                        resolve(candidates[candidates.length - 1]);
                         return;
                     }
                     const tempImg = new Image();
@@ -2529,14 +2536,46 @@
                         if (this.naturalWidth === 120) {
                             tryNext(i + 1);
                         } else {
-                            imgElement.src = candidates[i];
-                            resolve();
+                            resolve(candidates[i]);
                         }
                     };
                     tempImg.onerror = function () { tryNext(i + 1); };
                     tempImg.src = candidates[i];
                 }
                 tryNext(0);
+            });
+        }
+
+        function displayArtwork(imgElement, videoId) {
+            if (!imgElement || !videoId) return Promise.resolve();
+            return resolveBestArtworkUrl(videoId).then((url) => {
+                imgElement.src = url;
+            });
+        }
+
+        // Upgrade "silenzioso" della sola skin Immersive per i brani importati da Spotify
+        // (track.spotifyImport): sheetImg/miniImg restano impostati subito su
+        // track.thumbnail/mqdefault (vedi le due chiamate qui sotto nei punti in cui si
+        // avvia un brano) per non ritardare la UI, ma qui si prova IN PARALLELO la stessa
+        // cascata di qualità di displayArtwork (maxresdefault ecc.) e, se trova qualcosa
+        // di meglio, sostituisce sfondo Immersive + ricalcola il colore dominante su
+        // quell'immagine più nitida - stesso identico problema (aloni sfocati sull'80%
+        // di sfondo) che la cascata risolveva già per i brani cercati direttamente, qui
+        // esteso anche all'import Spotify invece di fermarsi al thumbnail della YouTube
+        // Data API (quasi mai maxres). Non tocca sheetImg/miniImg: lì una risoluzione
+        // media è comunque sufficiente per l'anteprima piccola.
+        function upgradeImmersiveArtworkQuality(track) {
+            if (!track || !track.id) return;
+            resolveBestArtworkUrl(track.id).then((url) => {
+                if (!url) return;
+                // Se nel frattempo il brano è già cambiato di nuovo, non applicare più
+                // un'artwork ormai vecchia sopra quella corretta.
+                if (typeof nowPlayingTracks !== 'undefined' && typeof nowPlayingIndex !== 'undefined') {
+                    const current = nowPlayingTracks[nowPlayingIndex];
+                    if (current && current.id !== track.id) return;
+                }
+                applyImmersiveArtwork(url);
+                updateImmersiveColorFromArtwork(url);
             });
         }
 
@@ -4121,6 +4160,7 @@
                 const src = track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '');
                 if (sheetImg) sheetImg.src = src;
                 if (miniImg) miniImg.src = src;
+                upgradeImmersiveArtworkQuality(track);
             } else if (track.id) {
                 displayArtwork(sheetImg, track.id);
                 displayArtwork(miniImg, track.id);
@@ -6018,6 +6058,7 @@
                 if (sheetImg) sheetImg.src = src;
                 if (miniImg) miniImg.src = src;
                 sheetArtworkReadyPromise = Promise.resolve();
+                upgradeImmersiveArtworkQuality(track);
             } else if (track.id) {
                 sheetArtworkReadyPromise = displayArtwork(sheetImg, track.id);
                 displayArtwork(miniImg, track.id);

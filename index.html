@@ -1234,14 +1234,14 @@
             position: absolute;
             top: 0; left: 0;
             width: 100%;
-            height: 80%;
+            height: 58%;
             object-fit: cover;
             /* Punch visivo (solo display, non tocca l'estrazione colore che lavora su
                un'Image separata in extractDominantDarkColor): molte thumbnail YouTube
                sono più piatte/lavate della cover ufficiale, questo le avvicina alla
                resa più satura/contrastata di riferimento (nero più pieno in alto,
                blu/colori più ricchi, luci che risaltano di più). */
-            filter: contrast(1.2) saturate(1.4) brightness(0.94);
+            filter: contrast(1.3) saturate(1.65) brightness(0.92);
         }
 
         /* ---- Tipografia Immersive: tutta la skin, non solo titolo/artista/playlist ----
@@ -1265,22 +1265,24 @@
            varianti a opacità crescente del colore dominante (--immersive-color-15/35/
            55/75/90, calcolate in JS in updateImmersiveColorFromArtwork) invece di
            rgba(0,0,0,...): la tonalità del brano resta coerente per tutta la sfumatura.
-           Rivela il colore pieno esattamente dove finisce l'immagine (80%), senza
-           cuciture. Niente color-mix() (vedi nota già presente prima): solo rgba()/var()
-           dirette. */
+           Rivela il colore pieno esattamente dove finisce l'immagine (58%, stessa % di
+           height su #immersiveBgImg qui sopra: se quella cambia, gli stop qui sotto vanno
+           ricalcolati con lo stesso fattore di scala, altrimenti si vede un taglio netto
+           invece di una dissolvenza), senza cuciture. Niente color-mix() (vedi nota già
+           presente prima): solo rgba()/var() dirette. */
         html.immersive #immersiveBg::after {
             content: '';
             position: absolute;
             inset: 0;
             background: linear-gradient(to bottom,
                 rgba(0,0,0,0) 0%,
-                rgba(0,0,0,0) 34%,
-                var(--immersive-color-15) 44%,
-                var(--immersive-color-35) 52%,
-                var(--immersive-color-55) 60%,
-                var(--immersive-color-75) 68%,
-                var(--immersive-color-90) 75%,
-                var(--immersive-color) 80%,
+                rgba(0,0,0,0) 25%,
+                var(--immersive-color-15) 32%,
+                var(--immersive-color-35) 38%,
+                var(--immersive-color-55) 44%,
+                var(--immersive-color-75) 49%,
+                var(--immersive-color-90) 54%,
+                var(--immersive-color) 58%,
                 var(--immersive-color) 100%);
         }
         /* Testi aperti: invece di far sparire immagine+gradiente sottostanti (bug di

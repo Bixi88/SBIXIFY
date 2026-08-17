@@ -1230,12 +1230,25 @@
             pointer-events: none;
             z-index: 0;
         }
-        html.immersive #immersiveBgImg {
+        html.immersive #immersiveBgBlur {
             position: absolute;
             top: 0; left: 0;
             width: 100%;
             height: 58%;
             object-fit: cover;
+            /* Scale(1.15) per nascondere l'alone semi-trasparente che il blur crea sui
+               propri bordi (senza, si vedrebbe un margine "sbavato" ai lati del
+               riquadro). Blur forte + luminosità ridotta: deve restare un tappeto di
+               colore/atmosfera dietro all'immagine intera sopra, mai leggibile da solo. */
+            transform: scale(1.15);
+            filter: blur(36px) saturate(1.65) brightness(0.55);
+        }
+        html.immersive #immersiveBgImg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 58%;
+            object-fit: contain;
             /* Punch visivo (solo display, non tocca l'estrazione colore che lavora su
                un'Image separata in extractDominantDarkColor): molte thumbnail YouTube
                sono più piatte/lavate della cover ufficiale, questo le avvicina alla
@@ -1840,8 +1853,18 @@
         <!-- Sfondo dinamico della skin "Immersive" (invisibile nelle altre skin): l'artwork
              del brano in riproduzione occupa la metà superiore e sfuma nel colore più usato
              al suo interno, che riempie da solo il resto dello schermo. Aggiornato via JS
-             (updateImmersiveColorFromArtwork) ogni volta che cambia l'artwork. -->
+             (updateImmersiveColorFromArtwork) ogni volta che cambia l'artwork.
+             Due <img> con la STESSA src (impostata insieme in applyImmersiveArtwork):
+             #immersiveBgBlur è il layer sotto, sfocato e ingrandito, con object-fit:cover
+             - può tagliare quanto vuole, è solo un tappeto di colore/atmosfera, non deve
+             mostrare contenuto leggibile. #immersiveBgImg è il layer sopra, con
+             object-fit:contain - mostra SEMPRE l'immagine intera, mai ritagliata: risolve
+             sia le copertine quadrate (prima venivano tagliate ai lati per riempire un
+             riquadro più alto che largo) sia le copertine "landscape" con scritte vicino
+             al bordo (prima tagliate via, es. fallback su thumbnail YouTube 16:9 con
+             testo promozionale sovrapposto). -->
         <div id="immersiveBg" aria-hidden="true">
+            <img id="immersiveBgBlur" alt="">
             <img id="immersiveBgImg" alt="">
             <!-- Copertura piatta per i testi (skin Immersive): invece di far sparire
                  l'artwork+gradiente sottostanti (opacity 1->0 su immagine + gradiente
@@ -2315,7 +2338,9 @@
         function applyImmersiveArtwork(url) {
             if (!url) return;
             const bgImg = document.getElementById('immersiveBgImg');
+            const bgBlur = document.getElementById('immersiveBgBlur');
             if (bgImg) bgImg.src = url;
+            if (bgBlur) bgBlur.src = url;
         }
         function updateImmersiveColorFromArtwork(url) {
             if (!url) return;

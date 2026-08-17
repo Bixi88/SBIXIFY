@@ -1671,11 +1671,18 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+            /* Spostata leggermente sotto la sfumatura superiore di #lyricsScroll (24px)
+               invece che centrata sull'intera altezza: da centrata risultava troppo
+               vicina alla sfumatura quando il messaggio è corto. Non esagerare con
+               questo valore: più sotto si rischia di avvicinarsi troppo al blocco
+               titolo/progress sotto #artworkBand. */
+            padding-top: 28px;
             gap: 10px;
             color: var(--text-muted);
             text-align: center;
-            padding: 0 30px;
+            padding-left: 30px;
+            padding-right: 30px;
             font-size: 13px;
         }
         .lyrics-state i { font-size: 22px; opacity: 0.6; }
@@ -3527,7 +3534,7 @@
             renderLyricsState('fa-spinner fa-spin-pulse', 'Ricerca testo…');
 
             if (!track || !track.title) {
-                renderLyricsState('fa-music', 'Nessun testo disponibile');
+                renderLyricsState('fa-microphone-slash', 'Che ci fai qua, non c\'è il testo, guardati la copertina');
                 return;
             }
             const artist = primaryArtistOf(track.channel);
@@ -3553,7 +3560,7 @@
                 lyricsLines = [];
                 return;
             }
-            renderLyricsState('fa-music', 'Nessun testo disponibile per questo brano');
+            renderLyricsState('fa-microphone-slash', 'Che ci fai qua, non c\'è il testo, guardati la copertina');
         }
 
         // Aggiornamento riga attiva: chiamato dal loop di progresso già esistente

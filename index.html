@@ -2645,6 +2645,25 @@
             }, 1800);
         }
 
+        // --- WATCHDOG QUALITÀ: mantiene il bitrate al massimo per tutta la riproduzione ---
+        // scheduleQualityUpgrade() sopra controlla una volta sola, poco dopo l'avvio del
+        // brano. Ma YouTube può declassare la qualità più avanti da solo (rete instabile,
+        // ribuffering) senza che nessuno se ne accorga: questo controllo periodico, finché
+        // c'è riproduzione attiva, verifica il livello corrente e lo riporta al migliore
+        // disponibile se è sceso. Nessun effetto se la qualità è già al top: getPlaybackQuality
+        // e setPlaybackQuality sono chiamate leggere, non ricaricano il video.
+        setInterval(() => {
+            if (!player || !appState.isPlaying) return;
+            try {
+                const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+                const best = levels.find(l => l !== 'auto') || levels[0];
+                const current = player.getPlaybackQuality ? player.getPlaybackQuality() : null;
+                if (best && current && current !== best && player.setPlaybackQuality) {
+                    player.setPlaybackQuality(best);
+                }
+            } catch (err) {}
+        }, 15000);
+
         function onPlayerReady(event) {
             player.setVolume(document.getElementById('volumeSlider')?.value || 100);
             startProgressLoop();

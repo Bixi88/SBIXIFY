@@ -4435,7 +4435,10 @@
                 const src = track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '');
                 if (sheetImg) sheetImg.src = src;
                 if (miniImg) miniImg.src = src;
-                upgradeImmersiveArtworkQuality(track);
+                // Solo se manca ancora una copertina di qualità (Deezer/iTunes) proviamo
+                // la cascata YouTube: se ce l'abbiamo già, è quasi sempre migliore del
+                // massimo che YouTube offre, quindi non ha senso sostituirla.
+                if (!track.thumbnail) upgradeImmersiveArtworkQuality(track);
             } else if (track.id) {
                 displayArtwork(sheetImg, track.id);
                 displayArtwork(miniImg, track.id);
@@ -5603,9 +5606,12 @@
         }
 
         // Le tracce hanno la copertina annidata in item.album, gli album ce l'hanno diretta.
+        // cover_xl (1000x1000) è la risoluzione più alta offerta da Deezer, sempre sopra
+        // la soglia FullHD (1080px sul lato corto); cover_big (500x500) resta come
+        // ripiego per le rare voci senza cover_xl.
         function extractDeezerArtwork(item, type) {
-            if (type === 'album') return item.cover_big || item.cover_medium || null;
-            return (item.album && (item.album.cover_big || item.album.cover_medium)) || null;
+            if (type === 'album') return item.cover_xl || item.cover_big || item.cover_medium || null;
+            return (item.album && (item.album.cover_xl || item.album.cover_big || item.album.cover_medium)) || null;
         }
 
         // Terzo tentativo (dopo Deezer e iTunes): TheAudioDB, database comunitario con
@@ -5637,12 +5643,14 @@
             return (channel || '').split(',')[0].trim() || channel;
         }
 
-        // Catena di ripiego per l'artwork temporanea di un brano importato: Deezer come
-        // fonte primaria (gratuita, senza chiave) -> iTunes (fetch normale: itunes.apple.com
-        // concede CORS sulla sua API di ricerca) -> TheAudioDB. Se nessuna delle tre trova
-        // nulla, niente artwork temporanea (torna null): meglio nessuna icona che una
-        // copertina inventata, la Now Playing/miniplayer gestiscono già il caso "nessuna
-        // artwork" a dovere.
+        // Catena di ripiego per la copertina di un brano importato: Deezer come fonte
+        // primaria (gratuita, senza chiave, cover_xl 1000x1000) -> iTunes (fetch normale:
+        // itunes.apple.com concede CORS sulla sua API di ricerca; 1200x1200, ben sopra la
+        // soglia FullHD e disponibile per praticamente tutto il catalogo) -> TheAudioDB
+        // (risoluzione variabile, usato solo se le prime due non trovano nulla). Se
+        // nessuna delle tre trova nulla, niente artwork (torna null): meglio nessuna icona
+        // che una copertina inventata, la Now Playing/miniplayer gestiscono già il caso
+        // "nessuna artwork" a dovere.
         async function fetchArtworkForQuickSearch(term, title, artist) {
             const deezerTracks = await fetchDeezerResults(term, 'track');
             if (deezerTracks.length > 0) {
@@ -5653,7 +5661,7 @@
                 const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&limit=1&entity=musicTrack`);
                 const data = await res.json();
                 if (data.results && data.results[0] && data.results[0].artworkUrl100) {
-                    return data.results[0].artworkUrl100.replace('100x100bb', '400x400bb');
+                    return data.results[0].artworkUrl100.replace('100x100bb', '1200x1200bb');
                 }
             } catch (err) {
                 console.warn('Impossibile recuperare artwork da iTunes:', err);
@@ -5663,14 +5671,13 @@
             return null;
         }
 
-        // Copertina TEMPORANEA per un brano importato da Spotify (che non ha ancora un
-        // video YouTube risolto, quindi nessuna miniatura definitiva): usata solo per
-        // non lasciare il tondino vuoto/grigio subito dopo l'import. Viene comunque
-        // salvata in cache (a differenza della vecchia versione, che non lo faceva) ma con
-        // priorità MINORE rispetto a YouTube: setCachedTrack qui sotto scrive solo il
-        // thumbnail, senza id, così un successivo cache-hit con id (quello vero, scritto
-        // in resolveYoutubeIdForTrack al primo ascolto) sovrascrive sempre questo valore e
-        // non torna più indietro.
+        // Copertina per un brano importato da Spotify (che non ha ancora un video YouTube
+        // risolto, quindi nessuna miniatura definitiva): usata subito per non lasciare il
+        // tondino vuoto/grigio dopo l'import, e salvata in cache. Ha priorità MAGGIORE
+        // rispetto alla miniatura YouTube: Deezer/iTunes sono quasi sempre più nitidi del
+        // massimo che YouTube offre (maxresdefault è comunque 1280x720, non un vero
+        // FullHD), quindi una volta trovata questa copertina resta quella definitiva anche
+        // dopo che il brano viene risolto su YouTube (vedi applyResolvedId più sotto).
         async function fetchTrackArtwork(track, index) {
             if (track.id || track.artworkFetched) return;
             track.artworkFetched = true;
@@ -5705,11 +5712,14 @@
             // aggiornamento serve sia in caso di hit sulla cache sia dopo una ricerca vera.
             function applyResolvedId(id, thumbnailUrl) {
                 track.id = id;
-                // Prima risoluzione vera del brano: la miniatura YouTube è quella
-                // DEFINITIVA e sostituisce sempre l'eventuale copertina temporanea di
-                // iTunes assegnata all'import (verrà salvata in cache poco sotto, insieme
-                // all'id, così resta pronta anche alla prossima apertura dell'app).
-                if (thumbnailUrl) track.thumbnail = thumbnailUrl;
+                // Se il brano ha già una copertina (Deezer/iTunes, presa all'import) la
+                // teniamo: batte quasi sempre la miniatura YouTube, anche alla sua
+                // risoluzione migliore. Altrimenti usiamo quella passata qui (già risolta
+                // con la stessa cascata di qualità delle ricerche dirette, non la semplice
+                // miniatura "high" da 480x360 della YouTube Data API) - verrà salvata in
+                // cache poco sotto, insieme all'id, così resta pronta anche alla prossima
+                // apertura dell'app.
+                if (thumbnailUrl && !track.thumbnail) track.thumbnail = thumbnailUrl;
                 track.resolved = true;
 
                 document.getElementById('apiErrorBadge')?.classList.add('hidden');
@@ -5722,7 +5732,7 @@
                 if (updateRowUI) {
                     const img = document.getElementById(`track-img-${index}`);
                     if (img) {
-                        if (track.spotifyImport && track.thumbnail) {
+                        if (track.thumbnail) {
                             img.src = track.thumbnail;
                         } else {
                             displayArtwork(img, track.id);
@@ -5782,7 +5792,10 @@
                 if (!data.items || data.items.length === 0) throw new Error('Nessun video YouTube trovato per questo brano.');
 
                 const item = data.items[0];
-                const thumbnailUrl = item.snippet.thumbnails.high ? item.snippet.thumbnails.high.url : item.snippet.thumbnails.default.url;
+                // Se il brano ha già una copertina Deezer/iTunes non serve nemmeno
+                // chiedere la cascata di qualità YouTube: risparmia le richieste inutili
+                // (vedi applyResolvedId, che comunque la ignorerebbe).
+                const thumbnailUrl = track.thumbnail ? null : await resolveBestArtworkUrl(item.id.videoId);
                 applyResolvedId(item.id.videoId, thumbnailUrl);
 
                 // Salva in cache: se questo brano ricompare (stessa o altra playlist),
@@ -5954,16 +5967,19 @@
         // cache (così la correzione resta valida anche riaprendo l'app o incontrando lo stesso
         // brano in un'altra playlist), la riga a schermo e — se è proprio il brano in ascolto
         // in questo momento — ricarica il player, così il cambio si sente subito, in tempo reale.
-        function applyCorrectedTrack(item) {
+        async function applyCorrectedTrack(item) {
             if (!correctSongContext) return;
             const { track, index, sourceTracks } = correctSongContext;
 
             track.id = item.id;
             track.resolved = true;
-            // Stessa logica di resolveYoutubeIdForTrack: la copertina del video scelto è
-            // quella definitiva da qui in poi, e sostituisce sempre l'eventuale copertina
-            // temporanea di iTunes.
-            if (item.thumbnail) track.thumbnail = item.thumbnail;
+            // Qui è una scelta ESPLICITA dell'utente (non una risoluzione automatica):
+            // la copertina del video scelto diventa quella definitiva da qui in poi, e
+            // sostituisce sempre l'eventuale copertina Deezer/iTunes precedente. Usiamo
+            // però la stessa cascata di qualità delle ricerche dirette (fino a
+            // maxresdefault) invece della semplice miniatura "high" del risultato,
+            // che resta solo come ripiego se per qualche motivo la cascata non risolve.
+            track.thumbnail = (await resolveBestArtworkUrl(item.id)) || item.thumbnail || track.thumbnail;
 
             setCachedTrack(track.title, track.channel, { id: track.id, thumbnail: track.thumbnail });
             if (currentListSource === 'spotify' && currentLoadedKey && currentLoadedKey.startsWith('playlist:')) {
@@ -5976,7 +5992,7 @@
             if (sourceTracks === appState.tracks) {
                 const img = document.getElementById(`track-img-${index}`);
                 if (img) {
-                    if (track.spotifyImport && track.thumbnail) img.src = track.thumbnail;
+                    if (track.thumbnail) img.src = track.thumbnail;
                     else displayArtwork(img, track.id);
                 }
                 const badge = img?.parentElement?.querySelector('.fa-spotify');
@@ -6326,14 +6342,17 @@
             const miniImg = document.getElementById('miniPlayerImg');
             if (track.spotifyImport) {
                 // track.thumbnail qui è già quella giusta per lo stato attuale del brano:
-                // temporanea (iTunes) se non ancora ascoltato, definitiva (YouTube) se sì -
-                // la sostituzione avviene una volta sola, al primo ascolto, in
-                // resolveYoutubeIdForTrack/applyCorrectedTrack.
+                // la copertina Deezer/iTunes trovata all'import se c'è (resta quella
+                // definitiva anche dopo la risoluzione su YouTube, vedi applyResolvedId),
+                // altrimenti la migliore miniatura YouTube trovata in quel momento.
                 const src = track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '');
                 if (sheetImg) sheetImg.src = src;
                 if (miniImg) miniImg.src = src;
                 sheetArtworkReadyPromise = Promise.resolve();
-                upgradeImmersiveArtworkQuality(track);
+                // Solo se manca ancora una copertina di qualità proviamo la cascata
+                // YouTube: se ce l'abbiamo già è quasi sempre migliore del massimo che
+                // YouTube offre, quindi non ha senso sostituirla.
+                if (!track.thumbnail) upgradeImmersiveArtworkQuality(track);
             } else if (track.id) {
                 sheetArtworkReadyPromise = displayArtwork(sheetImg, track.id);
                 displayArtwork(miniImg, track.id);
@@ -6396,9 +6415,10 @@
                 }
 
                 if (track.spotifyImport) {
-                    // resolveYoutubeIdForTrack ha appena sostituito track.thumbnail con la
-                    // miniatura YouTube definitiva (o l'ha impostata per la prima volta, se
-                    // iTunes non aveva trovato nulla in fase di import).
+                    // resolveYoutubeIdForTrack ha appena risolto il brano: track.thumbnail
+                    // resta la copertina Deezer/iTunes se l'import ne aveva trovata una
+                    // (è la migliore), altrimenti è stata impostata ora con la cascata di
+                    // qualità YouTube (fino a maxresdefault).
                     const src = track.thumbnail || `https://img.youtube.com/vi/${track.id}/mqdefault.jpg`;
                     if (sheetImg) sheetImg.src = src;
                     if (miniImg) miniImg.src = src;
@@ -6441,8 +6461,8 @@
                 // Più risoluzioni = artwork più nitido nei controlli di sistema (notifica, lock screen,
                 // pannello rapido Android): è lì che Android disegna quello che sembra un "widget", perché
                 // un vero home-screen widget non è realizzabile da una webapp/PWA, richiede codice nativo.
-                // Per i brani importati da Spotify usiamo track.thumbnail (temporanea iTunes
-                // o definitiva YouTube, a seconda dello stato) anche qui: stessa immagine
+                // Per i brani importati da Spotify usiamo track.thumbnail (Deezer/iTunes se
+                // trovata, altrimenti la YouTube risolta) anche qui: stessa immagine
                 // ovunque, niente cambio a sorpresa nel lock screen.
                 const artwork = (track.spotifyImport && track.thumbnail)
                     ? [{ src: track.thumbnail, sizes: '400x400', type: 'image/jpeg' }]

@@ -2190,6 +2190,46 @@
         // Usa un'Image separata (non quella visibile) con crossOrigin, così un eventuale
         // fallimento CORS della fonte (frequente con CDN esterni) non rompe nulla: si limita
         // a non produrre un colore, e chi chiama ricade sul fallback statico.
+        // Conversioni RGB<->HSL: servono allo "standard colore" qui sotto (vedi
+        // STANDARD_* più avanti) per poter fissare saturazione e luminosità in una
+        // fascia costante mantenendo solo la tonalità (hue) originale dell'artwork.
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+            if (max === min) { h = s = 0; }
+            else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    default: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return [h, s, l];
+        }
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) { r = g = b = l; }
+            else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1 / 6) return p + (q - p) * 6 * t;
+                    if (t < 1 / 2) return q;
+                    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1 / 3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1 / 3);
+            }
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
         function extractDominantDarkColor(url, callback) {
             try {
                 const img = new Image();
@@ -2257,46 +2297,55 @@
                         // vedi updateImmersiveColorFromArtwork).
                         const isGreyscale = vividBaseR === null;
                         if (isGreyscale) { vividBaseR = rawR; vividBaseG = rawG; vividBaseB = rawB; }
-                        // Versione scura (Now Playing sheet, lyrics, mini player): scurisce
-                        // mantenendo la tonalità, scalando sempre verso il basso se supera
-                        // la soglia. Soglia bassa apposta (non solo "se troppo chiaro"):
-                        // così il colore resta sempre scuro come nella reference, anche
-                        // partendo da un artwork dai colori vivaci.
-                        // Versione scura (Now Playing sheet, lyrics, mini player): parte dal
-                        // bucket "colorato" (vividBaseR/G/B, lo stesso trovato sopra per
-                        // l'accento) invece del bucket neutro più frequente (rawR/G/B) - così
-                        // la tonalità scura resta caratterizzante della copertina invece di
-                        // risultare lavata/spenta quando il pixel più frequente è un'area
-                        // neutra (cielo, ombra, muro). Poi scurisce comunque mantenendo la
-                        // tonalità, scalando sempre verso il basso se supera la soglia (un
-                        // filo più alta di prima: abbastanza per leggere il colore, non tanto
-                        // da compromettere il contrasto del testo bianco sopra, sempre fisso
-                        // in questa skin).
-                        let r = vividBaseR, g = vividBaseG, b = vividBaseB;
-                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                        const maxLum = 42;
-                        if (lum > maxLum) {
-                            const factor = maxLum / lum;
-                            r = Math.round(r * factor); g = Math.round(g * factor); b = Math.round(b * factor);
+                        // ---- STANDARD COLORE UNICO (Now Playing sheet, lyrics, mini player,
+                        // evidenziazione brano in ascolto) --------------------------------
+                        // Invece di limitarsi a scurire il colore quando è "troppo chiaro"
+                        // (comportamento a senso unico: se l'artwork era già scuro/spento il
+                        // colore restava debole), si converte il bucket colorato in HSL e si
+                        // forza saturazione e luminosità dentro una fascia FISSA, sia verso
+                        // l'alto che verso il basso. Si mantiene solo l'hue (la tonalità)
+                        // originale dell'artwork: il risultato è sempre un colore "gioiello"
+                        // - luminoso/saturo ma scuro - dello stesso standard delle reference,
+                        // qualunque sia la luminosità/saturazione di partenza della copertina.
+                        const [baseH, baseS] = rgbToHsl(vividBaseR, vividBaseG, vividBaseB);
+                        // Cerca, per tentativi (bisezione su L, 12 passaggi: costo trascurabile
+                        // su un solo colore), la luminosità HSL che porta il colore a un
+                        // preciso target di LUMINANZA PERCEPITA (0.299R+0.587G+0.114B). Non si
+                        // fissa una L HSL diretta perché a parità di L un verde/giallo appare
+                        // molto più chiaro di un blu/viola: usando la luminanza percepita come
+                        // bersaglio, il contrasto col testo bianco fisso di questa skin resta
+                        // identico per QUALSIASI tonalità - è questo lo "standard unico".
+                        function solveLightnessForLum(h, s, targetLum) {
+                            let lo = 0, hi = 1;
+                            for (let i = 0; i < 12; i++) {
+                                const mid = (lo + hi) / 2;
+                                const [tr, tg, tb] = hslToRgb(h, s, mid);
+                                const tLum = 0.299 * tr + 0.587 * tg + 0.114 * tb;
+                                if (tLum < targetLum) lo = mid; else hi = mid;
+                            }
+                            return (lo + hi) / 2;
                         }
+                        // Sfondo scuro (Now Playing / lyrics / mini player): saturo almeno al
+                        // 55% (tranne le copertine davvero in bianco e nero, che restano
+                        // neutre - vedi isGreyscale) e luminanza percepita fissa a 44/255 -
+                        // abbastanza scuro da garantire il contrasto col testo bianco, ma
+                        // sempre "colorato" invece che quasi-nero, sia che l'artwork di
+                        // partenza fosse vivace sia che fosse già spenta.
+                        const STANDARD_DARK_MIN_SAT = 0.55;
+                        const STANDARD_DARK_TARGET_LUM = 44;
+                        const darkS = isGreyscale ? baseS : Math.max(baseS, STANDARD_DARK_MIN_SAT);
+                        const darkL = solveLightnessForLum(baseH, darkS, STANDARD_DARK_TARGET_LUM);
+                        const [r, g, b] = hslToRgb(baseH, darkS, darkL);
                         // Versione "vivida" (evidenziazione del brano in ascolto in home e
-                        // lista canzoni, vedi reference YT Music): stessa tonalità del
-                        // bucket colorato trovato sopra (vividBaseR/G/B, non più il bucket
-                        // neutro rawR/G/B), riportata in una fascia di luminosità intermedia
-                        // invece che quasi-nera, così la riga risulta colorata e leggibile
-                        // invece di confondersi con lo sfondo scuro della skin.
-                        let vr = vividBaseR, vg = vividBaseG, vb = vividBaseB;
-                        const vLum = 0.299 * vr + 0.587 * vg + 0.114 * vb;
-                        const minVividLum = 90, maxVividLum = 215;
-                        if (vLum > 0 && vLum < minVividLum) {
-                            const factor = Math.min(minVividLum / vLum, 10);
-                            vr = Math.min(255, Math.round(vr * factor));
-                            vg = Math.min(255, Math.round(vg * factor));
-                            vb = Math.min(255, Math.round(vb * factor));
-                        } else if (vLum > maxVividLum) {
-                            const factor = maxVividLum / vLum;
-                            vr = Math.round(vr * factor); vg = Math.round(vg * factor); vb = Math.round(vb * factor);
-                        }
+                        // lista canzoni, tile skin in Impostazioni): stesso hue e stesso
+                        // principio, ma target di luminanza percepita più alto (160/255) e
+                        // saturazione minima leggermente più bassa (50%), così la riga risulta
+                        // colorata e leggibile invece di confondersi con lo sfondo scuro.
+                        const STANDARD_VIVID_MIN_SAT = 0.5;
+                        const STANDARD_VIVID_TARGET_LUM = 160;
+                        const vividS = isGreyscale ? baseS : Math.max(baseS, STANDARD_VIVID_MIN_SAT);
+                        const vividL = solveLightnessForLum(baseH, vividS, STANDARD_VIVID_TARGET_LUM);
+                        const [vr, vg, vb] = hslToRgb(baseH, vividS, vividL);
                         callback(r, g, b, vr, vg, vb, isGreyscale);
                     } catch (e) { callback(null); }
                 };

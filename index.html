@@ -241,6 +241,30 @@
         #nowPlayingSheet.expanded {
             transform: translateY(-100%);
         }
+        /* Vedi commento sul markup più sopra: posizionato assoluto rispetto a
+           #nowPlayingSheet (che è "position: fixed", quindi già containing block valido)
+           invece che dentro il flex #sheetHeaderRow, per restare in alto a sinistra
+           identico a prescindere da come ogni skin riorganizza l'header. Nascosto di
+           default, mostrato solo con .lyrics-open (vedi openLyricsPanel/closeLyricsPanel). */
+        #lyricsOffsetBtn {
+            display: none;
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 30px);
+            left: 24px;
+            z-index: 30;
+            padding: 8px;
+            font-size: 15px;
+            color: var(--text-main);
+            opacity: 0.75;
+            pointer-events: auto;
+        }
+        #lyricsOffsetBtn:active { opacity: 1; }
+        #nowPlayingSheet.lyrics-open #lyricsOffsetBtn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        html.immersive #lyricsOffsetBtn { color: #fff !important; }
 
         #miniPlayer {
             transform: translateY(150%);
@@ -619,6 +643,94 @@
             font-size: 13px;
         }
 
+        /* ---- Modal "Offset sincronizzazione testo" ----
+           Stessa sheet (.sleep-timer-modal/.sleep-timer-sheet) di sleep timer/correggi
+           canzone qui sopra, per restare automaticamente coerente con ogni skin (usa già
+           var(--bg-main)/var(--text-main) ecc.) - qui solo il contenuto proprio: icona,
+           titolo, valore, slider, tre azioni testuali. */
+        .lyrics-offset-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin: 2px auto 18px;
+        }
+        .lyrics-offset-title {
+            font-size: 23px;
+            font-weight: 800;
+            line-height: 1.22;
+            color: var(--text-main);
+            text-align: left;
+            margin: 0 0 20px;
+        }
+        .lyrics-offset-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            text-align: center;
+            margin-bottom: 20px;
+            font-variant-numeric: tabular-nums;
+        }
+        .lyrics-offset-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            display: block;
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            outline: none;
+            margin: 0 0 30px;
+            /* Il background reale (i due toni prima/dopo il cursore) viene impostato via
+               JS ad ogni cambio valore (updateLyricsOffsetUI) - qui solo un fallback
+               prima che il primo aggiornamento giri. */
+            background: var(--hair, rgba(243,239,230,0.18));
+        }
+        .lyrics-offset-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 7px;
+            height: 32px;
+            border-radius: 4px;
+            background: var(--text-main);
+            box-shadow: 0 0 0 4px var(--bg-main);
+            cursor: pointer;
+        }
+        .lyrics-offset-slider::-moz-range-thumb {
+            width: 7px;
+            height: 32px;
+            border: none;
+            border-radius: 4px;
+            background: var(--text-main);
+            box-shadow: 0 0 0 4px var(--bg-main);
+            cursor: pointer;
+        }
+        .lyrics-offset-slider::-moz-range-track {
+            height: 10px;
+            border-radius: 999px;
+            background: transparent;
+        }
+        .lyrics-offset-actions {
+            display: flex;
+            gap: 28px;
+            padding-bottom: 2px;
+        }
+        .lyrics-offset-action {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-main);
+            opacity: 0.7;
+            padding: 6px 0;
+        }
+        .lyrics-offset-action:active { opacity: 1; }
+        .lyrics-offset-action-primary {
+            color: var(--accent);
+            opacity: 1;
+            font-weight: 700;
+        }
 
         #miniPlayer, #miniPlayer *, #swipeTitleContainer, #swipeTitleContainer * {
             -webkit-user-drag: none;
@@ -1733,6 +1845,17 @@
 
         <div id="sheetSwipeCloseArea" class="absolute inset-x-0 top-0 z-10 cursor-grab active:cursor-grabbing" style="touch-action: none; bottom: 310px;"></div>
 
+        <!-- Pulsante "Offset sincronizzazione testo": compare SOLO quando il pannello
+             lyrics è aperto (classe .lyrics-open su #nowPlayingSheet, aggiunta/rimossa da
+             openLyricsPanel/closeLyricsPanel). Volutamente FUORI dal flex #sheetHeaderRow
+             (che in Immersive viene riorganizzato/ridotto al solo download, vedi regole
+             più sotto) e posizionato assoluto rispetto a #nowPlayingSheet: così resta
+             sempre in alto a sinistra, identico, in tutte e tre le skin invece di seguire
+             quel riflusso. -->
+        <button id="lyricsOffsetBtn" class="active:scale-90 transition-transform" title="Sincronizza testo">
+            <i class="fa-solid fa-gauge-high"></i>
+        </button>
+
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
             <div id="sheetHeaderDrag" class="w-full flex flex-col items-center py-2 shrink-0 cursor-pointer pointer-events-auto">
                 <div id="sheetHeaderRow" class="flex items-center justify-between w-full px-1">
@@ -1855,11 +1978,10 @@
             <div class="sleep-timer-sheet-handle"></div>
             <h3 class="sleep-timer-sheet-title">Timer spegnimento</h3>
             <div class="sleep-timer-sheet-divider"></div>
-            <div class="sleep-timer-option" data-minutes="10">10 minuti</div>
             <div class="sleep-timer-option" data-minutes="30">30 minuti</div>
             <div class="sleep-timer-option" data-minutes="60">60 minuti</div>
+            <div class="sleep-timer-option" data-minutes="90">90 minuti</div>
             <div class="sleep-timer-option" data-minutes="120">120 minuti</div>
-            <div class="sleep-timer-option" data-minutes="240">240 minuti</div>
         </div>
     </div>
 
@@ -1877,6 +1999,30 @@
             </div>
             <div class="sleep-timer-sheet-divider"></div>
             <div id="correctSongResults"></div>
+        </div>
+    </div>
+
+    <!-- Modal "Offset sincronizzazione testo": raggiungibile solo dal pulsante che compare
+         in alto a sinistra nella Now Playing quando i testi sono aperti (#lyricsOffsetBtn
+         qui sopra). Stessa sheet (overlay, animazione, sfondo opaco) di sleep timer/
+         correggi canzone qui sopra, contenuto proprio: uno slider -1000/+1000ms per
+         compensare testi che scattano leggermente in anticipo/ritardo rispetto all'audio
+         (es. latenza cuffie bluetooth). Il valore si applica in tempo reale mentre si
+         trascina (si vede subito l'effetto sulla riga evidenziata sotto), Annulla/tap
+         fuori/back ripristinano il valore che c'era prima di aprire la sheet, Ok lo
+         conferma e lo salva in localStorage. -->
+    <div id="lyricsOffsetModal" class="sleep-timer-modal">
+        <div class="sleep-timer-sheet">
+            <div class="sleep-timer-sheet-handle"></div>
+            <div class="lyrics-offset-icon"><i class="fa-solid fa-gauge-high"></i></div>
+            <h3 class="lyrics-offset-title">Offset sincronizzazione testo</h3>
+            <div id="lyricsOffsetValue" class="lyrics-offset-value">0 ms</div>
+            <input type="range" id="lyricsOffsetSlider" class="lyrics-offset-slider" min="-1000" max="1000" step="50" value="0">
+            <div class="lyrics-offset-actions">
+                <button id="lyricsOffsetReset" class="lyrics-offset-action">Ripristina</button>
+                <button id="lyricsOffsetCancel" class="lyrics-offset-action">Annulla</button>
+                <button id="lyricsOffsetOk" class="lyrics-offset-action lyrics-offset-action-primary">Ok</button>
+            </div>
         </div>
     </div>
 
@@ -2623,6 +2769,15 @@
                     correctSongModalEl.classList.remove('active');
                     handled = true;
                 }
+                // Modal "Offset sincronizzazione testo": stessa priorità delle due sopra.
+                // Il back equivale ad Annulla: ripristina il valore precedente invece di
+                // lasciare applicata un'anteprima mai confermata con Ok.
+                const lyricsOffsetModalEl = document.getElementById('lyricsOffsetModal');
+                if (lyricsOffsetModalEl && lyricsOffsetModalEl.classList.contains('active')) {
+                    applyLyricsOffsetPreview(lyricsOffsetPreviousMs);
+                    lyricsOffsetModalEl.classList.remove('active');
+                    handled = true;
+                }
                 if (!handled && nowPlayingSheet.classList.contains('expanded')) {
                     nowPlayingSheet.classList.remove('expanded');
                     nowPlayingSheet.style.transform = '';
@@ -2774,6 +2929,36 @@
             // Click sull'overlay (non sulla sheet) chiude, stesso pattern di #apiModal.
             document.getElementById('sleepTimerModal').addEventListener('click', (e) => {
                 if (e.target.id === 'sleepTimerModal') closeSleepTimerModal();
+            });
+
+            document.getElementById('lyricsOffsetBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openLyricsOffsetModal();
+                window.history.pushState({ page: 'lyricsOffset' }, 'LyricsOffset');
+            });
+            document.getElementById('lyricsOffsetSlider').addEventListener('input', (e) => {
+                applyLyricsOffsetPreview(parseInt(e.target.value, 10));
+            });
+            document.getElementById('lyricsOffsetReset').addEventListener('click', () => {
+                const slider = document.getElementById('lyricsOffsetSlider');
+                if (slider) slider.value = 0;
+                applyLyricsOffsetPreview(0);
+            });
+            document.getElementById('lyricsOffsetCancel').addEventListener('click', () => {
+                applyLyricsOffsetPreview(lyricsOffsetPreviousMs);
+                closeLyricsOffsetModal();
+            });
+            document.getElementById('lyricsOffsetOk').addEventListener('click', () => {
+                localStorage.setItem(LYRICS_OFFSET_KEY, String(lyricsOffsetMs));
+                closeLyricsOffsetModal();
+            });
+            // Click sull'overlay (non sulla sheet) = come Annulla: ripristina il valore
+            // precedente invece di lasciare applicata un'anteprima mai confermata.
+            document.getElementById('lyricsOffsetModal').addEventListener('click', (e) => {
+                if (e.target.id === 'lyricsOffsetModal') {
+                    applyLyricsOffsetPreview(lyricsOffsetPreviousMs);
+                    closeLyricsOffsetModal();
+                }
             });
 
             document.getElementById('correctSongBackBtn').addEventListener('click', closeCorrectSongModal);
@@ -3226,6 +3411,17 @@
         let lyricsRequestToken = 0;     // scarta risposte arrivate in ritardo per un brano già cambiato
         let lyricsOpen = false;
 
+        // ---- Offset sincronizzazione testo (-1000/+1000ms, vedi #lyricsOffsetModal) ----
+        // Un solo valore globale (non per brano): stessa logica di Apple Music, serve a
+        // compensare una latenza fissa (es. cuffie bluetooth), non un problema del
+        // singolo file di sync. Persistito in localStorage, applicato sottraendolo dal
+        // tempo di riproduzione corrente in updateActiveLyricLine più sotto: offset
+        // positivo = testo mostrato più IN RITARDO (si comporta come se il brano fosse
+        // "più indietro" di quanto sia davvero), negativo = testo mostrato più IN ANTICIPO.
+        const LYRICS_OFFSET_KEY = 'sbixify_lyrics_offset_ms';
+        let lyricsOffsetMs = parseInt(localStorage.getItem(LYRICS_OFFSET_KEY), 10) || 0;
+        let lyricsOffsetPreviousMs = 0; // valore da ripristinare con Annulla/tap fuori/back
+
         function renderLyricsState(iconClass, message) {
             const scroll = document.getElementById('lyricsScroll');
             scroll.innerHTML = `<div class="lyrics-state"><i class="fa-solid ${iconClass}"></i><span>${message}</span></div>`;
@@ -3284,9 +3480,14 @@
         // fa lo scroll automatico per tenerla centrata.
         function updateActiveLyricLine(currentTime) {
             if (!lyricsOpen || lyricsLines.length === 0) return;
+            // Vedi commento su lyricsOffsetMs più sopra: si sottrae (non si somma) perché
+            // un offset positivo deve "ritardare" il testo, cioè servono più secondi di
+            // riproduzione prima che una riga scatti - equivalente a guardare indietro nel
+            // tempo di quel tanto quando si cerca la riga corrispondente.
+            const adjustedTime = currentTime - (lyricsOffsetMs / 1000);
             let idx = -1;
             for (let i = 0; i < lyricsLines.length; i++) {
-                if (lyricsLines[i].time <= currentTime) idx = i; else break;
+                if (lyricsLines[i].time <= adjustedTime) idx = i; else break;
             }
             if (idx === lyricsActiveIndex) return;
             lyricsActiveIndex = idx;
@@ -3353,6 +3554,52 @@
             lyricsOpen = false;
             document.getElementById('artworkBand')?.classList.remove('lyrics-shown');
             document.getElementById('nowPlayingSheet')?.classList.remove('lyrics-open');
+        }
+
+        // Aggiorna solo la UI del modal (etichetta ms + riempimento bicolore dello
+        // slider): il colore "riempito" fino al cursore usa var(--hair) (muto, uguale al
+        // divisore delle altre sheet), quello dopo usa var(--accent) - niente hardcoded,
+        // segue automaticamente ogni skin.
+        function updateLyricsOffsetUI(ms) {
+            const valueEl = document.getElementById('lyricsOffsetValue');
+            if (valueEl) valueEl.textContent = `${ms > 0 ? '+' : ''}${ms} ms`;
+            const slider = document.getElementById('lyricsOffsetSlider');
+            if (!slider) return;
+            const min = parseInt(slider.min, 10), max = parseInt(slider.max, 10);
+            const pct = ((ms - min) / (max - min)) * 100;
+            slider.style.background = `linear-gradient(to right, var(--hair, rgba(243,239,230,0.18)) 0%, var(--hair, rgba(243,239,230,0.18)) ${pct}%, var(--accent) ${pct}%, var(--accent) 100%)`;
+        }
+
+        // Applica SUBITO il valore (mentre si trascina lo slider o si preme Ripristina),
+        // senza salvarlo: si vede l'effetto in tempo reale sulla riga evidenziata sotto il
+        // modal, ma diventa definitivo solo con Ok (vedi binding più sotto). Riallinea
+        // anche subito la riga attiva, stesso motivo di openLyricsPanel.
+        function applyLyricsOffsetPreview(ms) {
+            lyricsOffsetMs = ms;
+            updateLyricsOffsetUI(ms);
+            if (player?.getCurrentTime) {
+                lyricsActiveIndex = -1;
+                updateActiveLyricLine(player.getCurrentTime());
+            }
+        }
+
+        function openLyricsOffsetModal() {
+            lyricsOffsetPreviousMs = lyricsOffsetMs;
+            const slider = document.getElementById('lyricsOffsetSlider');
+            if (slider) slider.value = lyricsOffsetMs;
+            updateLyricsOffsetUI(lyricsOffsetMs);
+            document.getElementById('lyricsOffsetModal')?.classList.add('active');
+        }
+
+        function closeLyricsOffsetModal() {
+            // Stesso pattern di closeSleepTimerModal()/closeCorrectSongModal(): se in cima
+            // allo stack c'è lo stato 'lyricsOffset', lasciamo che sia popstate a
+            // rimuovere 'active', consumando quello stato con un back.
+            if (window.history.state && window.history.state.page === 'lyricsOffset') {
+                window.history.back();
+            } else {
+                document.getElementById('lyricsOffsetModal')?.classList.remove('active');
+            }
         }
 
         // Swipe ORIZZONTALE sulla fascia artwork (#artworkBand): verso sinistra col vinile

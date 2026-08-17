@@ -246,8 +246,12 @@
            chiusura resta comunque disponibile via swipe verso il basso su
            #sheetHeaderDrag/#sheetSwipeCloseArea, sempre presente. Tolto perché si
            sovrapponeva visivamente al nuovo #lyricsOffsetBtn qui sotto quando i testi
-           sono aperti. */
-        #closeSheetBtn { display: none !important; }
+           sono aperti. NOTA: "visibility: hidden", non "display: none" - quest'ultimo lo
+           toglieva anche dal flusso del flex #sheetHeaderRow, lasciando il blocco
+           centrale ("RIPRODUZIONE DA PLAYLIST"/nome playlist) sbilanciato verso sinistra
+           dato che a destra restava comunque il pulsante download a fargli da contrappeso.
+           Con visibility, lo spazio (invisibile, non cliccabile) resta a bilanciare. */
+        #closeSheetBtn { visibility: hidden !important; }
         /* Vedi commento sul markup più sopra: posizionato assoluto rispetto a
            #nowPlayingSheet (che è "position: fixed", quindi già containing block valido)
            invece che dentro il flex #sheetHeaderRow, per restare in alto a sinistra

@@ -2684,6 +2684,11 @@
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
                 scheduleQualityUpgrade();
+                // Il primo brano che parte per davvero in questa sessione (non un semplice
+                // "cued"/caricamento): da qui in poi il player non ha più bisogno di banda
+                // per sé, buon momento per far partire in sordina l'aggiornamento delle
+                // playlist scadute senza competere con la risoluzione del brano appena avviato.
+                schedulePlaylistAutoRefresh();
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
@@ -4513,6 +4518,97 @@
             const btn = document.getElementById('refreshPlaylistBtn');
             if (!btn) return;
             btn.classList.toggle('hidden', !url);
+        }
+
+        // --- AGGIORNAMENTO AUTOMATICO SETTIMANALE DELLE PLAYLIST ---
+        // Chi non preme mai il pulsante di refresh manuale (vedi updateRefreshPlaylistBtn)
+        // continuava a vedere la tracklist ferma al giorno dell'import, anche a distanza di
+        // mesi. Qui ogni playlist salvata nei Recenti scade per conto proprio, in base a
+        // quanto tempo è passato dal SUO ultimo aggiornamento (campo ts già presente nella
+        // cache): niente "giorno fisso" per tutte insieme, che intaserebbe il proxy CORS con
+        // richieste simultanee senza alcun vantaggio, dato che le scadenze si distribuiscono
+        // già da sole nel tempo in base a quando ciascuna playlist è stata aperta l'ultima volta.
+        // Parte una sola volta a sessione, con un piccolo ritardo dopo che il PRIMO brano
+        // della sessione è realmente partito (evento PLAYING, non solo "cued"): così non
+        // compete per banda con la ricerca/risoluzione del brano che l'utente ha appena avviato.
+        const PLAYLIST_AUTO_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 giorni
+        const PLAYLIST_AUTO_REFRESH_DELAY_MS = 10000; // attesa dopo il primo "play" della sessione
+        const PLAYLIST_AUTO_REFRESH_GAP_MS = 2000; // pausa tra una playlist e l'altra
+        let playlistAutoRefreshScheduled = false;
+
+        function schedulePlaylistAutoRefresh() {
+            if (playlistAutoRefreshScheduled) return;
+            playlistAutoRefreshScheduled = true;
+            setTimeout(() => {
+                autoRefreshStalePlaylists().catch(err => console.warn('Auto-refresh playlist fallito:', err));
+            }, PLAYLIST_AUTO_REFRESH_DELAY_MS);
+        }
+
+        async function autoRefreshStalePlaylists() {
+            const recents = loadRecentPlaylists();
+            if (recents.length === 0) return;
+            const cache = loadPlaylistTracksCache();
+            const stale = recents.filter(it => {
+                const entry = cache[it.url];
+                return !entry || (Date.now() - (entry.ts || 0) > PLAYLIST_AUTO_REFRESH_TTL_MS);
+            });
+            for (const item of stale) {
+                // Se proprio in questo momento è quella aperta a schermo, la saltiamo: non
+                // avrebbe senso rifare la fetch in sordina mentre l'utente la sta già
+                // guardando (e se l'ha aperta ora la sua cache non sarebbe comunque "stale").
+                if (currentLoadedKey === 'playlist:' + item.url) continue;
+                await silentRefreshPlaylist(item.url);
+                await sleep(PLAYLIST_AUTO_REFRESH_GAP_MS);
+            }
+        }
+
+        // Rifà la fetch della pagina embed Spotify per UNA playlist e aggiorna solo la sua
+        // cache (tracklist + ts) e i metadati nei Recenti, senza mai toccare appState o il
+        // DOM della lista brani: per gli id YouTube riusa quelli già noti (stesso
+        // titolo+artista, vedi getCachedTrack) così non consuma nuove ricerche YouTube per
+        // playlist che l'utente potrebbe non riaprire mai; eventuali brani nuovi restano
+        // semplicemente non risolti finché la playlist non viene aperta davvero (stessa
+        // logica, invariata, dell'import manuale).
+        async function silentRefreshPlaylist(url) {
+            const playlistId = extractSpotifyPlaylistId(url);
+            if (!playlistId) return;
+            try {
+                const scraped = await fetchSpotifyEmbedPlaylist(playlistId, true);
+                const tracks = scraped.tracks.map(t => {
+                    const cached = getCachedTrack(t.title, t.artist);
+                    const thumbnail = t.thumbnail || cached?.thumbnail || null;
+                    return {
+                        id: cached?.id || null,
+                        title: t.title,
+                        channel: t.artist,
+                        thumbnail,
+                        artworkFetched: !!(thumbnail || cached?.id),
+                        resolved: !!cached?.id,
+                        spotifyImport: true
+                    };
+                });
+                if (tracks.length === 0) return;
+                const cleanName = cleanSpotifyPlaylistName(scraped.name);
+                const artwork = scraped.cover || pickRandomPlaylistArtwork(scraped.tracks);
+                setCachedPlaylistTracks(url, { name: cleanName, artwork, tracks });
+                updateRecentPlaylistMeta(url, { name: cleanName, artwork });
+            } catch (err) {
+                console.warn(`Auto-refresh fallito per playlist ${url}:`, err);
+            }
+        }
+
+        // Aggiorna nome/copertina di UNA voce già presente nei Recenti SENZA spostarla in
+        // cima alla lista e senza toccarne il ts originale: a differenza di
+        // addRecentPlaylist (pensata per un import/apertura esplicita dell'utente), un
+        // refresh automatico in sordina non deve far "saltare" l'ordine dei Recenti sotto
+        // agli occhi dell'utente.
+        function updateRecentPlaylistMeta(url, { name, artwork }) {
+            const items = loadRecentPlaylists();
+            const idx = items.findIndex(it => it.url === url);
+            if (idx === -1) return;
+            items[idx] = { ...items[idx], name, artwork };
+            saveRecentPlaylists(items);
+            renderSettingsPlaylistList();
         }
 
         // --- SETTINGS: "Playlist Recenti" ---

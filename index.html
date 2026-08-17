@@ -5644,9 +5644,10 @@
         }
 
         // Catena di ripiego per la copertina di un brano importato: Deezer come fonte
-        // primaria (gratuita, senza chiave, cover_xl 1000x1000) -> iTunes (fetch normale:
-        // itunes.apple.com concede CORS sulla sua API di ricerca; 1200x1200, ben sopra la
-        // soglia FullHD e disponibile per praticamente tutto il catalogo) -> TheAudioDB
+        // primaria (gratuita, senza chiave, cover_xl 1000x1000 - il massimo che la loro
+        // API offre, non si può chiedere di più) -> iTunes (fetch normale: itunes.apple.com
+        // concede CORS sulla sua API di ricerca; 3000x3000, il tetto della loro CDN,
+        // quasi sempre disponibile per tutto il catalogo moderno) -> TheAudioDB
         // (risoluzione variabile, usato solo se le prime due non trovano nulla). Se
         // nessuna delle tre trova nulla, niente artwork (torna null): meglio nessuna icona
         // che una copertina inventata, la Now Playing/miniplayer gestiscono già il caso
@@ -5661,7 +5662,7 @@
                 const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&limit=1&entity=musicTrack`);
                 const data = await res.json();
                 if (data.results && data.results[0] && data.results[0].artworkUrl100) {
-                    return data.results[0].artworkUrl100.replace('100x100bb', '1200x1200bb');
+                    return data.results[0].artworkUrl100.replace('100x100bb', '3000x3000bb');
                 }
             } catch (err) {
                 console.warn('Impossibile recuperare artwork da iTunes:', err);

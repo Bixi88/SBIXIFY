@@ -133,7 +133,7 @@
          troppo "geometrico perfetto", mentre Circular/General Sans sono un grottesco con
          terminali smussati, non forme totalmente circolari). Vedi blocco tipografia
          immersive più sotto per dove viene applicato. -->
-    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
 
     <!-- Preconnect verso i domini YouTube: apre in anticipo la connessione (DNS+TLS)
          così, quando parte davvero il primo player.loadVideoById(), non si paga più
@@ -1244,22 +1244,16 @@
             filter: contrast(1.2) saturate(1.4) brightness(0.94);
         }
 
-        /* ---- Tipografia dedicata Immersive: titolo/artista/nome playlist ----
-           Solo in questa skin, al posto di Inter (usato ovunque nel resto dell'app):
-           General Sans (vedi link Fontshare in <head>), sostituto free più vicino a
-           Circular di Spotify. Titolo in 700 (peso maggiore), artista/nome playlist in
-           600 - vedi font-weight già impostati inline sugli elementi, qui si
-           sovrascrive solo il font-family. */
-        html.immersive #playerTrackTitle,
-        html.immersive #playerTrackChannel,
-        html.immersive #immersivePlaylistBtn,
-        html.immersive #miniPlayerTitle,
-        html.immersive #miniPlayerChannel,
-        html.immersive .home-track-meta .t-title,
-        html.immersive .home-track-meta .t-sub,
-        html.immersive .track-row .text-sm,
-        html.immersive .track-row .text-xs,
-        html.immersive .qcard .name {
+        /* ---- Tipografia Immersive: tutta la skin, non solo titolo/artista/playlist ----
+           General Sans (vedi link Fontshare in <head>) al posto di Inter (usato in tutte
+           le altre skin) ovunque in questa - header "In Riproduzione", pulsanti, testo
+           lyrics, Impostazioni, barra di ricerca, ecc. Le uniche due dichiarazioni
+           font-family esplicite nell'app che altrimenti "vincerebbero" per specificità
+           sulla semplice ereditarietà da body (quindi vanno sovrascritte a parte): .display
+           e #searchInput, entrambe impostate su Inter esplicito altrove nel foglio stile. */
+        html.immersive,
+        html.immersive .display,
+        html.immersive #searchInput {
             font-family: 'General Sans', 'Inter', sans-serif;
         }
         html.immersive #playerTrackTitle { font-weight: 700; letter-spacing: -0.01em; }
@@ -2966,7 +2960,8 @@
                 closeLyricsOffsetModal();
             });
             document.getElementById('lyricsOffsetOk').addEventListener('click', () => {
-                localStorage.setItem(LYRICS_OFFSET_KEY, String(lyricsOffsetMs));
+                // Niente più localStorage: vedi commento su lyricsOffsetMs più sopra, resta
+                // solo in memoria per il brano corrente.
                 lyricsOffsetJustConfirmed = true;
                 closeLyricsOffsetModal();
             });
@@ -3436,8 +3431,14 @@
         // tempo di riproduzione corrente in updateActiveLyricLine più sotto: offset
         // positivo = testo mostrato più IN RITARDO (si comporta come se il brano fosse
         // "più indietro" di quanto sia davvero), negativo = testo mostrato più IN ANTICIPO.
-        const LYRICS_OFFSET_KEY = 'sbixify_lyrics_offset_ms';
-        let lyricsOffsetMs = parseInt(localStorage.getItem(LYRICS_OFFSET_KEY), 10) || 0;
+        // ---- Offset sincronizzazione testo (-1000/+1000ms, vedi #lyricsOffsetModal) ----
+        // Vale SOLO per il brano in ascolto in questo momento: resta invariato se metti in
+        // pausa (non dipende dallo stato di riproduzione, solo dal tempo corrente), ma si
+        // azzera ad ogni cambio brano (vedi loadLyricsForCurrentTrack più sotto) e non è
+        // persistito da nessuna parte - chiudendo/riaprendo l'app riparte sempre da 0,
+        // anche per un brano su cui era stato regolato in una sessione precedente. Offset
+        // positivo = testo "velocizzato" (le righe scattano prima), negativo = "rallentato".
+        let lyricsOffsetMs = 0;
         let lyricsOffsetPreviousMs = 0; // valore da ripristinare con Annulla/tap fuori/back
         // Vedi popstate più sotto: distingue "back generato da Ok" (tiene il nuovo
         // valore) da "back generato da Annulla/tap fuori/gesto indietro dell'utente"
@@ -3466,6 +3467,9 @@
             const myToken = ++lyricsRequestToken;
             lyricsLines = [];
             lyricsActiveIndex = -1;
+            // Azzera l'offset di sincronizzazione del brano precedente: vedi commento su
+            // lyricsOffsetMs più sopra, non deve "seguire" da un brano all'altro.
+            lyricsOffsetMs = 0;
             renderLyricsState('fa-spinner fa-spin-pulse', 'Ricerca testo…');
 
             if (!track || !track.title) {

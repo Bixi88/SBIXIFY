@@ -2215,47 +2215,6 @@
         // Usa un'Image separata (non quella visibile) con crossOrigin, così un eventuale
         // fallimento CORS della fonte (frequente con CDN esterni) non rompe nulla: si limita
         // a non produrre un colore, e chi chiama ricade sul fallback statico.
-        // Conversioni RGB<->HSL: servono solo per il boost di saturazione qui sotto
-        // (extractDominantDarkColor), non per altro nell'app.
-        function rgbToHsl(r, g, b) {
-            r /= 255; g /= 255; b /= 255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-            if (max === min) {
-                h = s = 0;
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    default: h = (r - g) / d + 4;
-                }
-                h /= 6;
-            }
-            return [h, s, l];
-        }
-        function hslToRgb(h, s, l) {
-            if (s === 0) {
-                const v = Math.round(l * 255);
-                return [v, v, v];
-            }
-            const hue2rgb = (p, q, t) => {
-                if (t < 0) t += 1;
-                if (t > 1) t -= 1;
-                if (t < 1 / 6) return p + (q - p) * 6 * t;
-                if (t < 1 / 2) return q;
-                if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-                return p;
-            };
-            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-            const p = 2 * l - q;
-            return [
-                Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
-                Math.round(hue2rgb(p, q, h) * 255),
-                Math.round(hue2rgb(p, q, h - 1 / 3) * 255)
-            ];
-        }
         function extractDominantDarkColor(url, callback) {
             try {
                 const img = new Image();
@@ -2323,19 +2282,6 @@
                         // vedi updateImmersiveColorFromArtwork).
                         const isGreyscale = vividBaseR === null;
                         if (isGreyscale) { vividBaseR = rawR; vividBaseG = rawG; vividBaseB = rawB; }
-                        // Boost di saturazione (solo copertine a colori, non isGreyscale: qui
-                        // il trattamento bianco fisso è voluto, boostare "colore" dove non ce
-                        // n'è aggiungerebbe una tinta finta). Il bucket "colorato" trovato sopra
-                        // supera la soglia minima di spread, ma può comunque restare piuttosto
-                        // spento (es. blu-grigio invece di blu pieno) - qui in HSL si alza la
-                        // saturazione mantenendo tonalità e luminosità, PRIMA di derivare sia lo
-                        // sfondo scuro (Now Playing sheet/lyrics) sia l'accento vivido qui sotto:
-                        // così entrambi risultano pieni come nella reference, non slavati.
-                        if (!isGreyscale) {
-                            const [h, s, l] = rgbToHsl(vividBaseR, vividBaseG, vividBaseB);
-                            const boosted = hslToRgb(h, Math.min(1, s * 1.6), l);
-                            vividBaseR = boosted[0]; vividBaseG = boosted[1]; vividBaseB = boosted[2];
-                        }
                         // Versione scura (Now Playing sheet, lyrics, mini player): scurisce
                         // mantenendo la tonalità, scalando sempre verso il basso se supera
                         // la soglia. Soglia bassa apposta (non solo "se troppo chiaro"):

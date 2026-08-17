@@ -241,11 +241,21 @@
         #nowPlayingSheet.expanded {
             transform: translateY(-100%);
         }
+        /* Il pulsante "freccia giù" per chiudere la Now Playing sheet è stato rimosso in
+           TUTTE le skin (Immersive lo nascondeva già, ora anche Moderna/Walkman): la
+           chiusura resta comunque disponibile via swipe verso il basso su
+           #sheetHeaderDrag/#sheetSwipeCloseArea, sempre presente. Tolto perché si
+           sovrapponeva visivamente al nuovo #lyricsOffsetBtn qui sotto quando i testi
+           sono aperti. */
+        #closeSheetBtn { display: none !important; }
         /* Vedi commento sul markup più sopra: posizionato assoluto rispetto a
            #nowPlayingSheet (che è "position: fixed", quindi già containing block valido)
            invece che dentro il flex #sheetHeaderRow, per restare in alto a sinistra
            identico a prescindere da come ogni skin riorganizza l'header. Nascosto di
-           default, mostrato solo con .lyrics-open (vedi openLyricsPanel/closeLyricsPanel). */
+           default, mostrato solo con .lyrics-open (vedi openLyricsPanel/closeLyricsPanel).
+           Colore: stessa classe "custom-text-accent" del pulsante download (var(--accent)),
+           coerente in Moderna/Walkman - Immersive lo sovrascrive esplicitamente più sotto
+           con bianco fisso, come il resto dei testi/controlli di quella skin. */
         #lyricsOffsetBtn {
             display: none;
             position: absolute;
@@ -254,11 +264,9 @@
             z-index: 30;
             padding: 8px;
             font-size: 15px;
-            color: var(--text-main);
-            opacity: 0.75;
             pointer-events: auto;
         }
-        #lyricsOffsetBtn:active { opacity: 1; }
+        #lyricsOffsetBtn:active { opacity: 0.7; }
         #nowPlayingSheet.lyrics-open #lyricsOffsetBtn {
             display: inline-flex;
             align-items: center;
@@ -1131,7 +1139,9 @@
            va forzata sullo stesso viola "highlight" per restare accentata come nelle
            altra skin invece di confondersi con le altre icone bianche dell'header. */
         html.walkman #sheetDownloadBtn,
-        html.walkman #sheetDownloadBtn i {
+        html.walkman #sheetDownloadBtn i,
+        html.walkman #lyricsOffsetBtn,
+        html.walkman #lyricsOffsetBtn i {
             color: var(--walkman-highlight) !important;
         }
         html.walkman #pwaInstallBtn {
@@ -1337,7 +1347,7 @@
         }
         html.immersive #repeatBtn.active #repeatIcon,
         html.immersive #sleepTimerBtn.active #sleepTimerIcon {
-            color: #fff !important;
+            color: var(--immersive-accent) !important;
             -webkit-text-stroke-color: var(--immersive-color);
         }
         html.immersive #progressBar, html.immersive #miniProgressBar { background-color: #fff !important; }
@@ -1852,7 +1862,7 @@
              più sotto) e posizionato assoluto rispetto a #nowPlayingSheet: così resta
              sempre in alto a sinistra, identico, in tutte e tre le skin invece di seguire
              quel riflusso. -->
-        <button id="lyricsOffsetBtn" class="active:scale-90 transition-transform" title="Sincronizza testo">
+        <button id="lyricsOffsetBtn" class="custom-text-accent active:scale-90 transition-transform" title="Sincronizza testo">
             <i class="fa-solid fa-gauge-high"></i>
         </button>
 
@@ -2774,7 +2784,10 @@
                 // lasciare applicata un'anteprima mai confermata con Ok.
                 const lyricsOffsetModalEl = document.getElementById('lyricsOffsetModal');
                 if (lyricsOffsetModalEl && lyricsOffsetModalEl.classList.contains('active')) {
-                    applyLyricsOffsetPreview(lyricsOffsetPreviousMs);
+                    if (!lyricsOffsetJustConfirmed) {
+                        applyLyricsOffsetPreview(lyricsOffsetPreviousMs);
+                    }
+                    lyricsOffsetJustConfirmed = false;
                     lyricsOffsetModalEl.classList.remove('active');
                     handled = true;
                 }
@@ -2950,6 +2963,7 @@
             });
             document.getElementById('lyricsOffsetOk').addEventListener('click', () => {
                 localStorage.setItem(LYRICS_OFFSET_KEY, String(lyricsOffsetMs));
+                lyricsOffsetJustConfirmed = true;
                 closeLyricsOffsetModal();
             });
             // Click sull'overlay (non sulla sheet) = come Annulla: ripristina il valore
@@ -3421,6 +3435,12 @@
         const LYRICS_OFFSET_KEY = 'sbixify_lyrics_offset_ms';
         let lyricsOffsetMs = parseInt(localStorage.getItem(LYRICS_OFFSET_KEY), 10) || 0;
         let lyricsOffsetPreviousMs = 0; // valore da ripristinare con Annulla/tap fuori/back
+        // Vedi popstate più sotto: distingue "back generato da Ok" (tiene il nuovo
+        // valore) da "back generato da Annulla/tap fuori/gesto indietro dell'utente"
+        // (ripristina lyricsOffsetPreviousMs) - senza questo flag il history.back() che
+        // Ok stesso usa per chiudere la sheet veniva letto dal gestore popstate come un
+        // annullamento, disfacendo il valore appena salvato.
+        let lyricsOffsetJustConfirmed = false;
 
         function renderLyricsState(iconClass, message) {
             const scroll = document.getElementById('lyricsScroll');
@@ -3480,11 +3500,11 @@
         // fa lo scroll automatico per tenerla centrata.
         function updateActiveLyricLine(currentTime) {
             if (!lyricsOpen || lyricsLines.length === 0) return;
-            // Vedi commento su lyricsOffsetMs più sopra: si sottrae (non si somma) perché
-            // un offset positivo deve "ritardare" il testo, cioè servono più secondi di
-            // riproduzione prima che una riga scatti - equivalente a guardare indietro nel
-            // tempo di quel tanto quando si cerca la riga corrispondente.
-            const adjustedTime = currentTime - (lyricsOffsetMs / 1000);
+            // Vedi commento su lyricsOffsetMs più sopra: si SOMMA (non si sottrae) perché
+            // offset positivo deve "velocizzare" il testo, cioè le righe devono scattare
+            // prima - equivalente a guardare avanti nel tempo di quel tanto quando si
+            // cerca la riga corrispondente. Negativo = testo rallentato (scatta dopo).
+            const adjustedTime = currentTime + (lyricsOffsetMs / 1000);
             let idx = -1;
             for (let i = 0; i < lyricsLines.length; i++) {
                 if (lyricsLines[i].time <= adjustedTime) idx = i; else break;

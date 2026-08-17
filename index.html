@@ -6270,7 +6270,7 @@
 
                 trackRow.innerHTML = `
                     <div class="w-13 h-13 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-neutral-800 relative track-thumb-wrap" style="width:52px;height:52px;">
-                        <img id="track-img-${index}" src="${track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : (track.thumbnail || '')}" class="w-full h-full object-cover track-thumb-img" alt="" onload="this.classList.add('loaded')">
+                        <img id="track-img-${index}" src="${track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '')}" class="w-full h-full object-cover track-thumb-img" alt="" onload="this.classList.add('loaded')">
                         ${!track.id ? '<i class="fa-brands fa-spotify absolute bottom-0.5 right-0.5 text-[10px] text-[var(--accent)] drop-shadow"></i>' : ''}
                     </div>
                     <div class="flex-1 overflow-hidden">
@@ -6317,7 +6317,12 @@
                 });
                 trackListDiv.appendChild(trackRow);
 
-                if (track.id) {
+                // Se il brano ha già una copertina di qualità (Deezer/iTunes, vedi
+                // track.thumbnail) NON la sostituiamo con la cascata YouTube qui sotto:
+                // altrimenti la lista finiva per mostrare un'artwork diversa da quella del
+                // mini player/vinile/immersive, che invece la preservano sempre (vedi
+                // apertura di questo file, ricerca "Solo se manca ancora una copertina").
+                if (track.id && !track.thumbnail) {
                     setTimeout(() => {
                         const img = document.getElementById(`track-img-${index}`);
                         displayArtwork(img, track.id);

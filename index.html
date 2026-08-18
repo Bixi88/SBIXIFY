@@ -202,6 +202,29 @@
         .track-row-enter {
             animation: trackRowIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
+        /* --- FEEDBACK AL TAP SULLE RIGHE --- */
+        .track-row {
+            transition: background-color 0.15s ease, transform 0.15s ease;
+            will-change: transform;
+        }
+        .track-row:active {
+            background-color: rgba(255, 255, 255, 0.06);
+            transform: scale(0.985);
+        }
+        /* --- SHIMMER SULLA COVER MENTRE CARICA --- */
+        .track-thumb-wrap {
+            background-image: linear-gradient(100deg, rgba(255,255,255,0.02) 30%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.02) 70%);
+            background-size: 200% 100%;
+            animation: thumbShimmer 1.6s ease-in-out infinite;
+        }
+        .track-thumb-wrap:has(.track-thumb-img.loaded) {
+            animation: none;
+            background-image: none;
+        }
+        @keyframes thumbShimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
         /* La pressione prolungata su una riga apre "Correggi canzone" (vedi renderTracklist):
            senza queste regole, tenere premuto sul titolo/artista (testo normale, non protetto
            dalla regola globale valida solo per button/a/[role=button]/i) fa scattare la
@@ -408,6 +431,13 @@
         .track-thumb-img {
             transform: scale(var(--artwork-zoom));
             transform-origin: center;
+        }
+        /* Dissolvenza tra copertina vecchia e nuova quando cambia il src (vedi fadeSetSrc):
+           .track-thumb-img ha già la sua transition/opacity dedicata per il primo
+           caricamento (.loaded), questa serve solo per i cambi successivi allo stesso
+           elemento (sheet grande e mini player). */
+        #sheetArtworkImg {
+            transition: opacity 0.22s ease;
         }
         /* L'artwork del mini player va mostrata per intero dentro la sua cornice
            circolare, senza lo zoom-crop usato altrove: qui usiamo un fattore
@@ -2780,10 +2810,35 @@
             });
         }
 
+        // Cambia il src di un'immagine con una breve dissolvenza invece dello scatto secco
+        // che si vede assegnando .src direttamente: se l'immagine è già visibile, la fa
+        // sparire, cambia il src, e appena la nuova è pronta la fa ricomparire. Se non era
+        // ancora visibile (primo caricamento) cambia il src normalmente, senza dip - a quel
+        // punto pensa già il fade-in "di prima apparizione" gestito altrove (.loaded /
+        // opacity-100) a farla comparire in modo morbido.
+        function fadeSetSrc(imgElement, newSrc, duration = 220) {
+            if (!imgElement || !newSrc || imgElement.src === newSrc) return;
+            const computedOpacity = getComputedStyle(imgElement).opacity;
+            const wasVisible = parseFloat(computedOpacity) > 0.05;
+            if (!wasVisible) {
+                imgElement.src = newSrc;
+                return;
+            }
+            imgElement.style.opacity = '0';
+            setTimeout(() => {
+                imgElement.src = newSrc;
+                const reveal = () => {
+                    requestAnimationFrame(() => { imgElement.style.opacity = '1'; });
+                    imgElement.removeEventListener('load', reveal);
+                };
+                imgElement.addEventListener('load', reveal);
+            }, duration);
+        }
+
         function displayArtwork(imgElement, videoId) {
             if (!imgElement || !videoId) return Promise.resolve();
             return resolveBestArtworkUrl(videoId).then((url) => {
-                imgElement.src = url;
+                fadeSetSrc(imgElement, url);
             });
         }
 
@@ -3346,7 +3401,77 @@
             checkAndApplyMarquee();
         });
 
+        // Misura dove finirà l'artwork grande della sheet quando è completamente aperta,
+        // SENZA farla vedere aperta nel frattempo: la porta per un istante a expanded +
+        // transform azzerato con visibility:hidden (layout calcolato, nessun disegno a
+        // schermo), legge le coordinate, poi rimette tutto come stava prima di far tornare
+        // visibile la sheet. Serve da bersaglio per animateArtworkMorph qui sotto.
+        function getSheetArtworkTargetRect() {
+            const frame = document.getElementById('sheetArtworkFrame');
+            if (!nowPlayingSheet || !frame) return null;
+            const wasExpanded = nowPlayingSheet.classList.contains('expanded');
+            if (wasExpanded) return frame.getBoundingClientRect();
+            const prevTransition = nowPlayingSheet.style.transition;
+            const prevTransform = nowPlayingSheet.style.transform;
+            nowPlayingSheet.style.visibility = 'hidden';
+            nowPlayingSheet.style.transition = 'none';
+            nowPlayingSheet.style.transform = 'translate3d(0,0,0)';
+            nowPlayingSheet.classList.add('expanded');
+            const rect = frame.getBoundingClientRect();
+            nowPlayingSheet.classList.remove('expanded');
+            nowPlayingSheet.style.transform = prevTransform;
+            nowPlayingSheet.style.transition = prevTransition;
+            void nowPlayingSheet.offsetHeight;
+            nowPlayingSheet.style.visibility = '';
+            return rect;
+        }
+
+        // Animazione "morph": un clone dell'artwork del mini player parte esattamente dalla
+        // sua posizione/dimensione reali e si anima fino a coprire la posizione/dimensione
+        // dell'artwork grande della sheet, sincronizzato con l'apertura della sheet stessa.
+        // L'artwork vera della sheet è già lì sotto (semplicemente fuori schermo, essendo
+        // la sheet solo traslata), quindi a fine animazione basta rimuovere il clone: quello
+        // che si vede è già al suo posto.
+        function animateArtworkMorph() {
+            const miniFrame = document.getElementById('miniPlayerImgFrame');
+            const miniImg = document.getElementById('miniPlayerImg');
+            if (!miniFrame || !miniImg || !miniImg.src) return;
+            if (parseFloat(getComputedStyle(miniImg).opacity) < 0.5) return;
+            const startRect = miniFrame.getBoundingClientRect();
+            if (startRect.width < 1) return;
+            const endRect = getSheetArtworkTargetRect();
+            if (!endRect || endRect.width < 1) return;
+
+            const clone = miniImg.cloneNode(true);
+            clone.removeAttribute('id');
+            Object.assign(clone.style, {
+                position: 'fixed',
+                top: startRect.top + 'px',
+                left: startRect.left + 'px',
+                width: startRect.width + 'px',
+                height: startRect.height + 'px',
+                borderRadius: '50%',
+                zIndex: '200',
+                opacity: '1',
+                margin: '0',
+                transformOrigin: 'top left',
+                pointerEvents: 'none',
+                transition: 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)'
+            });
+            document.body.appendChild(clone);
+
+            const scaleX = endRect.width / startRect.width;
+            const scaleY = endRect.height / startRect.height;
+            const translateX = endRect.left - startRect.left;
+            const translateY = endRect.top - startRect.top;
+            requestAnimationFrame(() => {
+                clone.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+            });
+            setTimeout(() => clone.remove(), 420);
+        }
+
         function openNowPlayingSheet() {
+            animateArtworkMorph();
             // Riparte sempre dalla posizione reale attuale (utile se arriva subito dopo un
             // trascinamento interrotto a metà), animando da lì fino a completamente aperta.
             const startPercent = getSheetCurrentPercentY();
@@ -4513,8 +4638,8 @@
             const miniImg = document.getElementById('miniPlayerImg');
             if (track.spotifyImport) {
                 const src = track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '');
-                if (sheetImg) sheetImg.src = src;
-                if (miniImg) miniImg.src = src;
+                if (sheetImg) fadeSetSrc(sheetImg, src);
+                if (miniImg) fadeSetSrc(miniImg, src);
                 // Solo se manca ancora una copertina di qualità (Deezer/iTunes) proviamo
                 // la cascata YouTube: se ce l'abbiamo già, è quasi sempre migliore del
                 // massimo che YouTube offre, quindi non ha senso sostituirla.
@@ -6523,8 +6648,8 @@
                 // definitiva anche dopo la risoluzione su YouTube, vedi applyResolvedId),
                 // altrimenti la migliore miniatura YouTube trovata in quel momento.
                 const src = track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '');
-                if (sheetImg) sheetImg.src = src;
-                if (miniImg) miniImg.src = src;
+                if (sheetImg) fadeSetSrc(sheetImg, src);
+                if (miniImg) fadeSetSrc(miniImg, src);
                 sheetArtworkReadyPromise = Promise.resolve();
                 // Solo se manca ancora una copertina di qualità proviamo la cascata
                 // YouTube: se ce l'abbiamo già è quasi sempre migliore del massimo che

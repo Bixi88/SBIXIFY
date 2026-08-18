@@ -2399,7 +2399,7 @@
         function applyImmersiveArtwork(url) {
             if (!url) return;
             const bgImg = document.getElementById('immersiveBgImg');
-            if (bgImg) bgImg.src = url;
+            if (bgImg) fadeSetSrc(bgImg, url);
         }
         function updateImmersiveColorFromArtwork(url) {
             if (!url) return;
@@ -2810,29 +2810,60 @@
             });
         }
 
-        // Cambia il src di un'immagine con una breve dissolvenza invece dello scatto secco
-        // che si vede assegnando .src direttamente: se l'immagine è già visibile, la fa
-        // sparire, cambia il src, e appena la nuova è pronta la fa ricomparire. Se non era
-        // ancora visibile (primo caricamento) cambia il src normalmente, senza dip - a quel
-        // punto pensa già il fade-in "di prima apparizione" gestito altrove (.loaded /
-        // opacity-100) a farla comparire in modo morbido.
-        function fadeSetSrc(imgElement, newSrc, duration = 220) {
+        // Cambia il src di un'immagine con una VERA dissolvenza incrociata, senza mai passare
+        // da un istante di trasparenza (che altrimenti lascia intravedere per una frazione di
+        // secondo lo sfondo sottostante - es. il nero/scuro dietro l'artwork nella skin
+        // Walkman). Tecnica: un clone dell'immagine ATTUALE viene messo sopra, a piena
+        // opacità, mentre sotto il vero <img> carica già la nuova copertina; solo quando
+        // quella nuova è pronta il clone sopra si dissolve, rivelando quella nuova già lì -
+        // mai un buco vuoto in mezzo. Se l'immagine non era ancora visibile (primo
+        // caricamento) cambia il src normalmente, senza clone: a quel punto pensa già il
+        // fade-in "di prima apparizione" gestito altrove (.loaded / opacity-100).
+        function fadeSetSrc(imgElement, newSrc, duration = 260) {
             if (!imgElement || !newSrc || imgElement.src === newSrc) return;
-            const computedOpacity = getComputedStyle(imgElement).opacity;
-            const wasVisible = parseFloat(computedOpacity) > 0.05;
+            const rect = imgElement.getBoundingClientRect();
+            const wasVisible = parseFloat(getComputedStyle(imgElement).opacity) > 0.05 && rect.width > 0;
             if (!wasVisible) {
                 imgElement.src = newSrc;
                 return;
             }
-            imgElement.style.opacity = '0';
-            setTimeout(() => {
+            const parent = imgElement.parentElement;
+            if (!parent) { imgElement.src = newSrc; return; }
+            if (getComputedStyle(parent).position === 'static') {
+                parent.style.position = 'relative';
+            }
+            const computed = getComputedStyle(imgElement);
+            const overlay = imgElement.cloneNode(true);
+            overlay.removeAttribute('id');
+            Object.assign(overlay.style, {
+                position: 'absolute',
+                top: imgElement.offsetTop + 'px',
+                left: imgElement.offsetLeft + 'px',
+                width: imgElement.offsetWidth + 'px',
+                height: imgElement.offsetHeight + 'px',
+                objectFit: computed.objectFit,
+                transform: computed.transform,
+                opacity: '1',
+                transition: `opacity ${duration}ms ease`,
+                pointerEvents: 'none',
+                zIndex: '1'
+            });
+            parent.appendChild(overlay);
+
+            const cleanup = () => overlay.remove();
+            const preload = new Image();
+            preload.onload = () => {
                 imgElement.src = newSrc;
-                const reveal = () => {
-                    requestAnimationFrame(() => { imgElement.style.opacity = '1'; });
-                    imgElement.removeEventListener('load', reveal);
-                };
-                imgElement.addEventListener('load', reveal);
-            }, duration);
+                // Doppio rAF: forza il browser a "committare" l'overlay a opacità piena
+                // per almeno un frame prima di cambiarla, altrimenti Chrome a volte
+                // fonde le due scritture di stile e la dissolvenza non si vede affatto.
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => { overlay.style.opacity = '0'; });
+                });
+                setTimeout(cleanup, duration + 80);
+            };
+            preload.onerror = cleanup;
+            preload.src = newSrc;
         }
 
         function displayArtwork(imgElement, videoId) {
@@ -3464,8 +3495,15 @@
             const scaleY = endRect.height / startRect.height;
             const translateX = endRect.left - startRect.left;
             const translateY = endRect.top - startRect.top;
+            // Forza il browser a "committare" la posizione di partenza prima di cambiare il
+            // transform: senza questo, la scrittura iniziale e quella finale rischiano di
+            // fondersi nello stesso frame e il clone salta dritto alla posizione finale
+            // invece di animarsi (motivo per cui l'animazione a volte non si vedeva affatto).
+            void clone.offsetWidth;
             requestAnimationFrame(() => {
-                clone.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                requestAnimationFrame(() => {
+                    clone.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                });
             });
             setTimeout(() => clone.remove(), 420);
         }

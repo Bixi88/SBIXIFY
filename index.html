@@ -935,8 +935,8 @@
            margin negativo altrove, spinge naturalmente in basso anche tutto quello che
            segue nel flusso (griglia playlist, canzoni), niente altro da ritoccare. */
         .home-header + .quick-eyebrow { padding-top: 34px; }
-        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:22px 14px; padding:14px 24px 20px; justify-items:center; }
-        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; max-width:104px; }
+        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 20px; justify-items:center; }
+        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }
         .qcard { position:relative; }
@@ -1203,6 +1203,12 @@
             border-color: transparent;
         }
         html.immersive .qcard.latest .name { color: var(--immersive-accent); }
+        /* Titolo "SBIXIFY" in home: le ultime due lettere ("FY", .custom-text-accent) usano
+           di default l'accento statico del tema (--accent, arancione fisso). Solo in
+           Immersive le facciamo seguire l'accento dinamico calcolato dall'artwork in
+           ascolto (--immersive-accent, vedi updateImmersiveColorFromArtwork), così il
+           titolo riflette la tonalità corrente come il resto della skin. */
+        html.immersive .app-title .custom-text-accent { color: var(--immersive-accent); }
         /* Eccezione a contrasto: mini player e riga del brano in ascolto (home/lista) hanno
            GIÀ lo sfondo colorato con --immersive-accent (vedi #miniPlayer, .track-row.playing
            più sotto), quindi lì la cornice con lo stesso colore si fondeva con lo sfondo

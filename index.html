@@ -3446,7 +3446,13 @@
             const prevTransform = nowPlayingSheet.style.transform;
             nowPlayingSheet.style.visibility = 'hidden';
             nowPlayingSheet.style.transition = 'none';
-            nowPlayingSheet.style.transform = 'translate3d(0,0,0)';
+            // Posizione "aperta" vera: la stessa che applica la classe .expanded
+            // (translateY(-100%), non un transform azzerato - la sheet parte da
+            // top:100%, cioè del tutto fuori schermo sotto, e sale di un'intera sua
+            // altezza per diventare visibile. Misurarla con un transform a zero la
+            // teneva bloccata fuori schermo, ed è per questo che il morph "non si vedeva":
+            // il clone animava verso una posizione ancora invisibile.
+            nowPlayingSheet.style.transform = 'translate3d(0, -100%, 0)';
             nowPlayingSheet.classList.add('expanded');
             const rect = frame.getBoundingClientRect();
             nowPlayingSheet.classList.remove('expanded');

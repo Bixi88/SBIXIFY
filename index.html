@@ -3584,10 +3584,15 @@
             }
             if (data && data.plainLyrics) {
                 // Solo testo, senza timestamp: niente evidenziazione riga per riga, ma
-                // meglio che nulla.
+                // meglio che nulla. Qui non c'è nessuna riga "attiva" che risalti sulle
+                // altre (quella logica vale solo per il testo sincronizzato via LRC, vedi
+                // updateActiveLyricLine), quindi la persona sta leggendo il testo a mano
+                // per intero: niente sfocatura style="a fuoco solo il presente" ereditata
+                // da .lyrics-line, va tolta esplicitamente riga per riga (filter/opacity
+                // inline sovrascrivono quelli della classe base).
                 const scroll = document.getElementById('lyricsScroll');
                 scroll.innerHTML = data.plainLyrics.split('\n').filter(l => l.trim())
-                    .map(l => `<div class="lyrics-line" style="opacity:.75;">${escapeHtml(l)}</div>`).join('');
+                    .map(l => `<div class="lyrics-line" style="opacity:1; filter:none;">${escapeHtml(l)}</div>`).join('');
                 lyricsLines = [];
                 return;
             }

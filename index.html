@@ -1209,6 +1209,12 @@
            ascolto (--immersive-accent, vedi updateImmersiveColorFromArtwork), così il
            titolo riflette la tonalità corrente come il resto della skin. */
         html.immersive .app-title .custom-text-accent { color: var(--immersive-accent); }
+        /* Eccezione: quando l'accento dinamico è il "bianco sporco" delle copertine in
+           scala di grigi (--immersive-accent: #E8E8E6, classe .immersive-grey aggiunta in
+           updateImmersiveColorFromArtwork), quel colore è troppo vicino al bianco di "SBIXI"
+           per distinguere le due lettere "FY" - qui si passa invece a un grigio medio neutro
+           coerente col resto della UI, solo per il titolo. */
+        html.immersive.immersive-grey .app-title .custom-text-accent { color: #9C99A6; }
         /* Eccezione a contrasto: mini player e riga del brano in ascolto (home/lista) hanno
            GIÀ lo sfondo colorato con --immersive-accent (vedi #miniPlayer, .track-row.playing
            più sotto), quindi lì la cornice con lo stesso colore si fondeva con lo sfondo

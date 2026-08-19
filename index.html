@@ -3956,11 +3956,22 @@
         }
 
         // Vera Fullscreen API: nasconde davvero barra di stato e barra di navigazione
-        // del telefono, non solo l'overlay nero della pagina. Nota: la prima volta che
-        // si entra Chrome Android può mostrare un banner nativo del sistema operativo
-        // ("trascina dall'alto per uscire") - non è sopprimibile via codice, è UI del
-        // browser/OS, non della pagina.
+        // del telefono, non solo l'overlay nero della pagina. MA: se l'app è già
+        // installata con manifest "display":"fullscreen" (vedi manifest.json), il
+        // sistema la mostra GIÀ senza barre, sempre, senza mai passare da questa API -
+        // chiamarla comunque qui sotto è quello che fa comparire il banner nativo del
+        // browser ("trascina dall'alto per uscire"), anche se il fullscreen c'era già.
+        // Quindi: se il display-mode corrente è già "fullscreen", saltiamo del tutto la
+        // chiamata (niente chiamata, niente banner). La chiamata resta solo come
+        // fallback per chi apre il sito da una scheda normale del browser (dove il
+        // manifest non ha alcun effetto) - lì il banner nativo resta un limite noto,
+        // non risolvibile via codice.
+        function isAlreadyFullscreenDisplay() {
+            return window.matchMedia?.('(display-mode: fullscreen)')?.matches === true;
+        }
+
         function requestDriveModeFullscreen() {
+            if (isAlreadyFullscreenDisplay()) return;
             const el = document.documentElement;
             const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
             if (!request) return;
@@ -3975,6 +3986,7 @@
         }
 
         function exitDriveModeFullscreen() {
+            if (isAlreadyFullscreenDisplay()) return; // mai entrati via API, niente da chiudere
             if (!(document.fullscreenElement || document.webkitFullscreenElement)) return;
             const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
             if (!exit) return;

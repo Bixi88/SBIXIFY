@@ -2710,7 +2710,13 @@
             // YouTube è più lenta del DOMContentLoaded) e aveva un brano pronto da
             // "caricare in pausa", lo facciamo solo ora che il player esiste davvero.
             if (pendingCueTrackId) {
-                try { player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' }); } catch (err) {}
+                try {
+                    if (pendingAutoplay) {
+                        player.loadVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' });
+                    } else {
+                        player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' });
+                    }
+                } catch (err) {}
                 pendingCueTrackId = null;
             }
         }
@@ -2865,6 +2871,12 @@
         // exitOnBackArmedTimeout se non arriva una seconda pressione in tempo.
         let exitOnBackArmed = false;
         let exitOnBackArmedTimeout = null;
+
+        // Autoplay da automazione esterna (es. Tasker su Bluetooth auto): se la pagina
+        // viene aperta con ?autoplay=1, l'ultimo brano ascoltato riparte da solo, senza
+        // bisogno di un tap manuale. Nessun effetto in un'apertura normale (il parametro
+        // non c'è), quindi non cambia nulla per chi apre l'app a mano.
+        const pendingAutoplay = new URLSearchParams(location.search).get('autoplay') === '1';
 
         document.addEventListener('DOMContentLoaded', () => {
             renderRecentHome();
@@ -4622,7 +4634,14 @@
 
             if (track.id) {
                 if (player?.cueVideoById) {
-                    try { playLoadToken++; player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); } catch (err) {}
+                    try {
+                        playLoadToken++;
+                        if (pendingAutoplay) {
+                            player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
+                        } else {
+                            player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
+                        }
+                    } catch (err) {}
                 } else {
                     pendingCueTrackId = track.id;
                 }

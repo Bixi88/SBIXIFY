@@ -4186,19 +4186,30 @@
             offsetX = Math.max(0, Math.min(offsetX, rect.width));
             scrubPercentage = offsetX / rect.width;
 
-            const duration = player.getDuration() || 0;
+            // player.getDuration() può restituire per un istante la durata del brano
+            // USCENTE se quello nuovo non è ancora davvero caricato (stesso quirk IFrame
+            // API commentato sopra playLoadToken): senza questo controllo, l'anteprima live
+            // durante il drag calcolerebbe il tempo target sulla durata sbagliata (es.
+            // "1:22" su un brano che dura in realtà 2:10, perché letta la durata di quello
+            // precedente). Se il player non è ancora confermato sul brano corrente, mostriamo
+            // solo lo spostamento della barra (percentuale), non un tempo fasullo.
+            const currentTrack = nowPlayingTracks[nowPlayingIndex];
+            const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
+            const playerReadyOnCurrentTrack = currentTrack && currentTrack.id && activeVideoId === currentTrack.id && playLoadConfirmedToken === playLoadToken;
+            const duration = playerReadyOnCurrentTrack ? (player.getDuration() || 0) : 0;
             const targetTime = duration * scrubPercentage;
 
             progressBar.style.width = `${scrubPercentage * 100}%`;
             miniProgressBar.style.width = `${scrubPercentage * 100}%`;
-            
-            document.getElementById('currentTime').innerText = formatTime(targetTime);
-            document.getElementById('miniCurrentTime').innerText = formatTime(targetTime);
+
+            const targetTimeLabel = playerReadyOnCurrentTrack ? formatTime(targetTime) : '0:00';
+            document.getElementById('currentTime').innerText = targetTimeLabel;
+            document.getElementById('miniCurrentTime').innerText = targetTimeLabel;
 
             if (activeScrubType === 'large') {
                 let relativeLeft = clientX - rect.left;
                 relativeLeft = Math.max(0, Math.min(relativeLeft, rect.width));
-                progressTooltip.innerText = formatTime(targetTime);
+                progressTooltip.innerText = targetTimeLabel;
                 progressTooltip.style.left = `${relativeLeft}px`;
                 progressTooltip.classList.remove('hidden');
             }

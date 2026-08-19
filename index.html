@@ -2706,6 +2706,14 @@
             const ka = document.getElementById('keepAliveAudio');
             if (ka) ka.volume = 0.01; // percettibile solo dal browser, non dall'orecchio
 
+            // Autoplay da automazione esterna (?autoplay=1): i browser Chromium bloccano
+            // SEMPRE l'avvio automatico con audio, ma lo permettono SEMPRE se il video
+            // parte muto. Partiamo quindi muti e ci smuttiamo da soli non appena lo stato
+            // passa a "in riproduzione" (vedi onPlayerStateChange) - a quel punto il video
+            // sta già suonando, quindi riattivare l'audio non richiede un gesto utente e
+            // il browser lo permette.
+            if (pendingAutoplay) { try { player.mute(); } catch (err) {} }
+
             // Se restoreLastPlayback() era già passata (caso normale: l'iframe API
             // YouTube è più lenta del DOMContentLoaded) e aveva un brano pronto da
             // "caricare in pausa", lo facciamo solo ora che il player esiste davvero.
@@ -2758,6 +2766,13 @@
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
                 scheduleQualityUpgrade();
+                // Il video è partito muto per aggirare il blocco autoplay-con-audio dei
+                // browser Chromium (vedi onPlayerReady): ora che sta davvero suonando,
+                // riattiviamo l'audio. A questo punto non serve più un gesto utente.
+                if (pendingAutoplay) {
+                    try { player.unMute(); player.setVolume(document.getElementById('volumeSlider')?.value || 100); } catch (err) {}
+                    pendingAutoplay = false; // un solo smutamento automatico per sessione
+                }
                 // Il primo brano che parte per davvero in questa sessione (non un semplice
                 // "cued"/caricamento): da qui in poi il player non ha più bisogno di banda
                 // per sé, buon momento per far partire in sordina l'aggiornamento delle
@@ -2876,7 +2891,7 @@
         // viene aperta con ?autoplay=1, l'ultimo brano ascoltato riparte da solo, senza
         // bisogno di un tap manuale. Nessun effetto in un'apertura normale (il parametro
         // non c'è), quindi non cambia nulla per chi apre l'app a mano.
-        const pendingAutoplay = new URLSearchParams(location.search).get('autoplay') === '1';
+        let pendingAutoplay = new URLSearchParams(location.search).get('autoplay') === '1';
 
         document.addEventListener('DOMContentLoaded', () => {
             renderRecentHome();

@@ -260,6 +260,24 @@
            Colore: stessa classe "custom-text-accent" del pulsante download (var(--accent)),
            coerente in Moderna/Walkman - Immersive lo sovrascrive esplicitamente più sotto
            con bianco fisso, come il resto dei testi/controlli di quella skin. */
+        /* Wrapper generico "icona in scatola 1em×1em, centrata via absolute+transform":
+           usato sia da #lyricsOffsetBtn (una sola icona) sia da #driveModeBtn (due icone
+           impilate per il morph) così i contenuti di entrambi i pulsanti hanno ESATTAMENTE
+           la stessa geometria (nessuna variazione dovuta ai metrics naturali, leggermente
+           diversi, dei singoli glifi Font Awesome) e restano perfettamente allineati alla
+           stessa altezza, uno a sinistra e uno a destra. */
+        .icon-stack {
+            position: relative;
+            width: 1em;
+            height: 1em;
+            display: inline-flex;
+        }
+        .icon-stack i {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
         #lyricsOffsetBtn {
             display: none;
             position: absolute;
@@ -1746,6 +1764,13 @@
             pointer-events: auto;
         }
         #driveModeBtn:active { opacity: 0.7; }
+        /* Le due icone (auto/download) sono impilate una sull'altra nello stesso punto
+           (vedi .icon-stack qui sopra): il morph le fa incrociare in dissolvenza mentre
+           il bottone vola, invece di scattare istantaneamente da un'icona all'altra.
+           Stato "a riposo" (nessuna animazione in corso): auto piena, download
+           invisibile - l'opposto viene impostato via JS solo per la durata del volo, poi
+           ripulito. */
+        #driveModeDownloadIcon { opacity: 0; }
         #nowPlayingSheet.lyrics-open #driveModeBtn {
             display: inline-flex;
             align-items: center;
@@ -1792,6 +1817,17 @@
         #driveModeRotate .lyrics-line {
             font-size: 30px;
             padding: 10px 26px;
+        }
+        /* Immersive: nel pannello testi normale la riga attiva è bianco fisso
+           (--immersive-lyrics-text), pensato per lo sfondo scuro-ma-non-nero di quella
+           schermata (--immersive-lyrics-bg). In Modalità Auto lo sfondo è SEMPRE nero
+           puro, quindi qui il bianco fisso perde senso: la riga cantata ora usa invece
+           l'accento dinamico dell'artwork (--immersive-accent, la stessa tonalità già
+           usata da mini player/cornici/pillola in ascolto), coerente con "i colori soliti
+           di ogni skin" invece di un bianco slegato dal brano. Le righe non attive
+           restano invariate (--immersive-lyrics-muted, ancora leggibile su nero). */
+        html.immersive #driveModeRotate .lyrics-line.active {
+            color: var(--immersive-accent);
         }
         #driveModeRotate .lyrics-state { font-size: 15px; }
         #driveModeRotate .lyrics-state i { font-size: 26px; }
@@ -1970,13 +2006,22 @@
              sempre in alto a sinistra, identico, in tutte e tre le skin invece di seguire
              quel riflusso. -->
         <button id="lyricsOffsetBtn" class="custom-text-accent active:scale-90 transition-transform" title="Sincronizza testo">
-            <i class="fa-solid fa-gauge-high"></i>
+            <span class="icon-stack"><i class="fa-solid fa-gauge-high"></i></span>
         </button>
 
         <!-- Pulsante "Modalità auto": gemello di #lyricsOffsetBtn ma a destra, stessa
-             visibilità (solo quando i testi sono aperti). Vedi openDriveMode() in JS. -->
+             visibilità (solo quando i testi sono aperti). Vedi openDriveMode() in JS.
+             Due icone sovrapposte (auto/download) invece di una sola: quando i testi si
+             aprono/chiudono, morphDownloadButtonToDrive()/morphDriveButtonToDownload() lo
+             fanno "volare" dalla/verso la posizione del pulsante download reale
+             (#sheetDownloadBtn, che nel frattempo resta nascosto - vedi CSS
+             #nowPlayingSheet.lyrics-open #sheetDownloadBtn) incrociando la dissolvenza
+             tra le due icone, così sembra lo stesso pulsante che si trasforma. -->
         <button id="driveModeBtn" class="custom-text-accent active:scale-90 transition-transform" title="Modalità auto (schermo intero)">
-            <i class="fa-solid fa-car"></i>
+            <span class="icon-stack">
+                <i class="fa-solid fa-car" id="driveModeCarIcon"></i>
+                <i class="fa-solid fa-download" id="driveModeDownloadIcon"></i>
+            </span>
         </button>
 
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
@@ -3845,7 +3890,7 @@
             // Skin "Immersive": mentre i testi sono aperti l'intero sfondo della sheet deve
             // diventare un unico colore pieno (niente più immagine/gradiente sopra), invece
             // di lasciare l'artwork visibile intorno al riquadro dei testi.
-            document.getElementById('nowPlayingSheet')?.classList.add('lyrics-open');
+            morphDownloadButtonToDrive();
             hapticFeedback();
             // Riallinea subito la riga attiva sulla posizione corrente del brano, invece di
             // aspettare il prossimo tick del loop di progresso.
@@ -3853,6 +3898,98 @@
                 lyricsActiveIndex = -1;
                 updateActiveLyricLine(player.getCurrentTime());
             }
+        }
+
+        // Morphing pulsante download <-> pulsante auto: tecnica FLIP (First-Last-Invert-
+        // Play), fatta interamente sul solo #driveModeBtn - il vero #sheetDownloadBtn non
+        // viene mai toccato (resta con la sua logica di enable/disable per brano invariata,
+        // vedi toggleDownloadButtons) e semplicemente sparisce/ricompare di scatto nel
+        // preciso istante in cui il "clone" (driveModeBtn, già vestito con l'icona
+        // download) parte a volare dalla sua stessa posizione: i due si scambiano nello
+        // stesso fotogramma, quindi non si vede alcun salto.
+        // FIRST: misura la posizione di partenza. LAST: applica il cambiamento di stato
+        // (classe .lyrics-open, che sposta driveModeBtn nella sua posizione finale via
+        // CSS) e misura quella di arrivo. INVERT: sposta istantaneamente l'elemento
+        // indietro alla posizione di partenza con un transform (nessuna transizione).
+        // PLAY: al frame successivo rimuove il transform con la transizione attiva - il
+        // browser anima da solo il tragitto.
+        function morphDownloadButtonToDrive() {
+            const driveBtn = document.getElementById('driveModeBtn');
+            const downloadBtn = document.getElementById('sheetDownloadBtn');
+            const carIcon = document.getElementById('driveModeCarIcon');
+            const dlIcon = document.getElementById('driveModeDownloadIcon');
+            const sheet = document.getElementById('nowPlayingSheet');
+            if (!driveBtn || !downloadBtn || !sheet) { sheet?.classList.add('lyrics-open'); return; }
+
+            const startRect = downloadBtn.getBoundingClientRect();
+            sheet.classList.add('lyrics-open'); // driveModeBtn appare nella sua posizione finale (CSS), downloadBtn si nasconde
+            const endRect = driveBtn.getBoundingClientRect();
+            const dx = startRect.left - endRect.left;
+            const dy = startRect.top - endRect.top;
+
+            driveBtn.style.transition = 'none';
+            driveBtn.style.transform = `translate(${dx}px, ${dy}px)`;
+            carIcon.style.opacity = '0';
+            dlIcon.style.opacity = '1';
+            driveBtn.getBoundingClientRect(); // forza il reflow prima di riattivare la transizione
+            requestAnimationFrame(() => {
+                driveBtn.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
+                driveBtn.style.transform = 'translate(0, 0)';
+                carIcon.style.opacity = '1';
+                dlIcon.style.opacity = '0';
+            });
+            setTimeout(() => {
+                driveBtn.style.transition = '';
+                driveBtn.style.transform = '';
+            }, 420);
+        }
+
+        // Stesso principio al contrario: qui il punto di ARRIVO (la posizione del vero
+        // download) non è ancora noto finché non si toglie .lyrics-open, quindi prima si
+        // "congela" driveModeBtn con coordinate assolute in px (altrimenti, perdendo di
+        // colpo le regole CSS che lo tengono visibile in quello stato, sparirebbe di
+        // scatto invece di poter volare all'indietro).
+        function morphDriveButtonToDownload() {
+            const driveBtn = document.getElementById('driveModeBtn');
+            const downloadBtn = document.getElementById('sheetDownloadBtn');
+            const carIcon = document.getElementById('driveModeCarIcon');
+            const dlIcon = document.getElementById('driveModeDownloadIcon');
+            const sheet = document.getElementById('nowPlayingSheet');
+            if (!driveBtn || !downloadBtn || !sheet) { sheet?.classList.remove('lyrics-open'); return; }
+
+            const startRect = driveBtn.getBoundingClientRect();
+            driveBtn.style.position = 'fixed';
+            driveBtn.style.top = startRect.top + 'px';
+            driveBtn.style.left = startRect.left + 'px';
+            driveBtn.style.right = 'auto';
+            driveBtn.style.display = 'inline-flex';
+            driveBtn.style.transition = 'none';
+
+            sheet.classList.remove('lyrics-open'); // il download reale ricompare, invariato, al suo posto
+
+            const endRect = downloadBtn.getBoundingClientRect();
+            const dx = endRect.left - startRect.left;
+            const dy = endRect.top - startRect.top;
+            driveBtn.getBoundingClientRect(); // forza il reflow
+            requestAnimationFrame(() => {
+                driveBtn.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
+                driveBtn.style.transform = `translate(${dx}px, ${dy}px)`;
+                carIcon.style.opacity = '0';
+                dlIcon.style.opacity = '1';
+            });
+            setTimeout(() => {
+                // Ripristina le regole CSS normali (nascosto, in attesa della prossima
+                // apertura) invece di lasciare le coordinate fisse impostate qui sopra.
+                driveBtn.style.position = '';
+                driveBtn.style.top = '';
+                driveBtn.style.left = '';
+                driveBtn.style.right = '';
+                driveBtn.style.display = '';
+                driveBtn.style.transition = '';
+                driveBtn.style.transform = '';
+                carIcon.style.opacity = '';
+                dlIcon.style.opacity = '';
+            }, 420);
         }
 
         // Modalità Auto: NON duplica #lyricsScroll, lo sposta davvero dentro l'overlay
@@ -3897,7 +4034,7 @@
         function closeLyricsPanel() {
             lyricsOpen = false;
             document.getElementById('artworkBand')?.classList.remove('lyrics-shown');
-            document.getElementById('nowPlayingSheet')?.classList.remove('lyrics-open');
+            morphDriveButtonToDownload();
         }
 
         // Aggiorna solo la UI del modal (etichetta ms + riempimento bicolore dello

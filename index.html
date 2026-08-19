@@ -1145,7 +1145,9 @@
         html.walkman #sheetDownloadBtn,
         html.walkman #sheetDownloadBtn i,
         html.walkman #lyricsOffsetBtn,
-        html.walkman #lyricsOffsetBtn i {
+        html.walkman #lyricsOffsetBtn i,
+        html.walkman #driveModeBtn,
+        html.walkman #driveModeBtn i {
             color: var(--walkman-highlight) !important;
         }
         html.walkman #pwaInstallBtn {
@@ -1750,6 +1752,14 @@
             justify-content: center;
         }
         html.immersive #driveModeBtn { color: #fff !important; }
+
+        /* Col pannello testi aperto, in alto restano solo offset (sinistra) e auto
+           (destra): il download - dentro il flex #sheetHeaderRow, quindi normalmente più
+           in basso/centrato diversamente per skin - in alcune configurazioni finiva
+           troppo vicino/sovrapposto al pulsante auto qui sopra. Va tenuto solo nella Now
+           Playing "normale": lyrics-open lo nasconde (visibility, non display, stesso
+           motivo di #closeSheetBtn più sopra - non sbilanciare il resto della riga). */
+        #nowPlayingSheet.lyrics-open #sheetDownloadBtn { visibility: hidden !important; }
 
         #driveMode {
             display: none;
@@ -3859,10 +3869,6 @@
             document.getElementById('driveModeRotate').appendChild(scroll);
             document.getElementById('driveMode').classList.add('active');
             hapticFeedback();
-            // Best-effort: nasconde anche le barre di sistema, se il browser lo consente.
-            // Ignorato in silenzio se non supportato/negato (es. iOS, alcune WebView) -
-            // la resa "nero e parole a schermo intero" funziona comunque via CSS da sola.
-            document.documentElement.requestFullscreen?.().catch(() => {});
             window.history.pushState({ page: 'driveMode' }, 'DriveMode');
         }
 
@@ -3886,7 +3892,6 @@
             const panel = document.getElementById('lyricsPanel');
             if (scroll && panel) panel.appendChild(scroll);
             document.getElementById('driveMode')?.classList.remove('active');
-            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
         }
 
         function closeLyricsPanel() {

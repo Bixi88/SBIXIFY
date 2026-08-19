@@ -1741,7 +1741,9 @@
 
         /* ================= Modalità Auto (testo a schermo intero, orizzontale) =================
            Pulsante gemello di #lyricsOffsetBtn ma a destra, stessa striscia in alto,
-           visibile SOLO quando i testi sono aperti (.lyrics-open). Apre #driveMode: un
+           sovrapposto al pulsante download (stessa posizione assoluta, dissolvenza
+           incrociata - vedi CSS più sotto), visibile SOLO quando i testi sono aperti
+           (.lyrics-open). Apre #driveMode: un
            overlay a schermo intero, sempre nero, che ospita (spostandolo davvero nel DOM,
            non duplicandolo - vedi openDriveMode/closeDriveMode in JS) lo stesso identico
            #lyricsScroll già usato nel pannello testi normale. Così riga attiva, scroll
@@ -1753,38 +1755,46 @@
            (transform: rotate(90deg) su un riquadro 100vh x 100vw), il classico trucco per
            ottenere una resa orizzontale a prescindere da come il telefono è fisicamente
            montato in auto. */
-        #driveModeBtn {
-            display: none;
+        /* Pulsante "Modalità auto" e pulsante download: stessa identica posizione
+           assoluta (stessi top/right/z-index/padding), letteralmente sovrapposti uno
+           sull'altro. Non serve nessun volo/morph tra due posizioni diverse: i due
+           pulsanti non si incontrano mai (download quando i testi sono chiusi, auto
+           quando sono aperti), quindi basta una dissolvenza incrociata via opacity,
+           pilotata dalla classe .lyrics-open su #nowPlayingSheet (vedi
+           openLyricsPanel/closeLyricsPanel in JS, che si limitano ad aggiungere/togliere
+           quella classe). */
+        #driveModeBtn,
+        #sheetDownloadBtn {
             position: absolute;
             top: calc(env(safe-area-inset-top, 0px) + 30px);
             right: 24px;
             z-index: 30;
             padding: 8px;
             font-size: 15px;
-            pointer-events: auto;
-        }
-        #driveModeBtn:active { opacity: 0.7; }
-        /* Le due icone (auto/download) sono impilate una sull'altra nello stesso punto
-           (vedi .icon-stack qui sopra): il morph le fa incrociare in dissolvenza mentre
-           il bottone vola, invece di scattare istantaneamente da un'icona all'altra.
-           Stato "a riposo" (nessuna animazione in corso): auto piena, download
-           invisibile - l'opposto viene impostato via JS solo per la durata del volo, poi
-           ripulito. */
-        #driveModeDownloadIcon { opacity: 0; }
-        #nowPlayingSheet.lyrics-open #driveModeBtn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            transition: opacity 0.2s ease;
+        }
+        /* A riposo (testi chiusi): auto invisibile e non cliccabile, download visibile
+           con la sua opacità/stato normale (enable/disable per brano, invariato). */
+        #driveModeBtn {
+            opacity: 0;
+            pointer-events: none;
         }
         html.immersive #driveModeBtn { color: #fff !important; }
-
-        /* Col pannello testi aperto, in alto restano solo offset (sinistra) e auto
-           (destra): il download - dentro il flex #sheetHeaderRow, quindi normalmente più
-           in basso/centrato diversamente per skin - in alcune configurazioni finiva
-           troppo vicino/sovrapposto al pulsante auto qui sopra. Va tenuto solo nella Now
-           Playing "normale": lyrics-open lo nasconde (visibility, non display, stesso
-           motivo di #closeSheetBtn più sopra - non sbilanciare il resto della riga). */
-        #nowPlayingSheet.lyrics-open #sheetDownloadBtn { visibility: hidden !important; }
+        #nowPlayingSheet.lyrics-open #driveModeBtn {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #nowPlayingSheet.lyrics-open #driveModeBtn:active { opacity: 0.7; }
+        /* Testi aperti: il download reale si dissolve invece di volare via - !important
+           perché deve vincere sia sull'opacità Tailwind di stato disabilitato (opacity-30)
+           sia su quella abilitata. */
+        #nowPlayingSheet.lyrics-open #sheetDownloadBtn {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
 
         #driveMode {
             display: none;
@@ -2009,19 +2019,21 @@
             <span class="icon-stack"><i class="fa-solid fa-gauge-high"></i></span>
         </button>
 
+        <!-- Pulsante download: spostato QUI, fuori dal flex #sheetHeaderRow, in
+             posizione assoluta - esattamente sovrapposto a #driveModeBtn subito sotto
+             (stessi top/right in CSS). I due non si incontrano mai (uno è visibile a
+             testi chiusi, l'altro a testi aperti - vedi CSS .lyrics-open), quindi
+             possono stare nello stesso punto: al cambio di stato si dissolve l'uno e
+             compare l'altro, niente volo. La sua logica di enable/disable per brano
+             (classe opacity-30/cursor-not-allowed, aggiornata da toggleDownloadButtons)
+             resta invariata. -->
+        <button id="sheetDownloadBtn" class="custom-text-accent hover:opacity-80 opacity-30 cursor-not-allowed active:scale-90 transition-transform" disabled title="Scarica">
+            <i class="fa-solid fa-download"></i>
+        </button>
         <!-- Pulsante "Modalità auto": gemello di #lyricsOffsetBtn ma a destra, stessa
-             visibilità (solo quando i testi sono aperti). Vedi openDriveMode() in JS.
-             Due icone sovrapposte (auto/download) invece di una sola: quando i testi si
-             aprono/chiudono, morphDownloadButtonToDrive()/morphDriveButtonToDownload() lo
-             fanno "volare" dalla/verso la posizione del pulsante download reale
-             (#sheetDownloadBtn, che nel frattempo resta nascosto - vedi CSS
-             #nowPlayingSheet.lyrics-open #sheetDownloadBtn) incrociando la dissolvenza
-             tra le due icone, così sembra lo stesso pulsante che si trasforma. -->
+             visibilità (solo quando i testi sono aperti). Vedi openDriveMode() in JS. -->
         <button id="driveModeBtn" class="custom-text-accent active:scale-90 transition-transform" title="Modalità auto (schermo intero)">
-            <span class="icon-stack">
-                <i class="fa-solid fa-car" id="driveModeCarIcon"></i>
-                <i class="fa-solid fa-download" id="driveModeDownloadIcon"></i>
-            </span>
+            <span class="icon-stack"><i class="fa-solid fa-car"></i></span>
         </button>
 
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
@@ -2034,9 +2046,14 @@
                         <span id="sheetHeaderEyebrow" class="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-300 truncate max-w-full">In Riproduzione</span>
                         <span id="sheetHeaderPlaylistName" class="hidden text-[13px] font-bold text-white truncate max-w-[200px] mt-0.5"></span>
                     </div>
-                    <button id="sheetDownloadBtn" class="custom-text-accent hover:opacity-80 p-2 text-[14px] opacity-30 cursor-not-allowed active:scale-90 transition-transform" disabled>
+                    <!-- Spazio invisibile della stessa dimensione del vecchio pulsante
+                         download: il download vero ora è assoluto fuori da questa riga
+                         (vedi sopra), ma questo "contrappeso" resta per non sbilanciare
+                         a sinistra il titolo centrato - stesso motivo di #closeSheetBtn
+                         qui sopra. -->
+                    <div class="p-2 text-[14px] invisible pointer-events-none" aria-hidden="true">
                         <i class="fa-solid fa-download"></i>
-                    </button>
+                    </div>
                 </div>
             </div>
 
@@ -3259,6 +3276,16 @@
                 e.stopPropagation();
                 openDriveMode();
             });
+            // Se il sistema fa uscire dal fullscreen senza passare dal nostro tasto/back
+            // (es. un gesto Android), chiude comunque la Modalità Auto invece di lasciare
+            // l'overlay nero con le barre di sistema che ci si sovrappongono sopra.
+            ['fullscreenchange', 'webkitfullscreenchange'].forEach(evt => {
+                document.addEventListener(evt, () => {
+                    if (driveModeOpen && !(document.fullscreenElement || document.webkitFullscreenElement)) {
+                        closeDriveMode();
+                    }
+                });
+            });
             // Tocco ovunque sull'overlay: unico modo per tornare alla modalità verticale
             // (nessun altro controllo visibile, come richiesto - "solo nero e parole").
             document.getElementById('driveMode').addEventListener('click', () => {
@@ -3889,8 +3916,9 @@
             document.getElementById('artworkBand').classList.add('lyrics-shown');
             // Skin "Immersive": mentre i testi sono aperti l'intero sfondo della sheet deve
             // diventare un unico colore pieno (niente più immagine/gradiente sopra), invece
-            // di lasciare l'artwork visibile intorno al riquadro dei testi.
-            morphDownloadButtonToDrive();
+            // di lasciare l'artwork visibile intorno al riquadro dei testi. Questa stessa
+            // classe pilota anche la dissolvenza incrociata download <-> auto (vedi CSS).
+            document.getElementById('nowPlayingSheet')?.classList.add('lyrics-open');
             hapticFeedback();
             // Riallinea subito la riga attiva sulla posizione corrente del brano, invece di
             // aspettare il prossimo tick del loop di progresso.
@@ -3898,98 +3926,6 @@
                 lyricsActiveIndex = -1;
                 updateActiveLyricLine(player.getCurrentTime());
             }
-        }
-
-        // Morphing pulsante download <-> pulsante auto: tecnica FLIP (First-Last-Invert-
-        // Play), fatta interamente sul solo #driveModeBtn - il vero #sheetDownloadBtn non
-        // viene mai toccato (resta con la sua logica di enable/disable per brano invariata,
-        // vedi toggleDownloadButtons) e semplicemente sparisce/ricompare di scatto nel
-        // preciso istante in cui il "clone" (driveModeBtn, già vestito con l'icona
-        // download) parte a volare dalla sua stessa posizione: i due si scambiano nello
-        // stesso fotogramma, quindi non si vede alcun salto.
-        // FIRST: misura la posizione di partenza. LAST: applica il cambiamento di stato
-        // (classe .lyrics-open, che sposta driveModeBtn nella sua posizione finale via
-        // CSS) e misura quella di arrivo. INVERT: sposta istantaneamente l'elemento
-        // indietro alla posizione di partenza con un transform (nessuna transizione).
-        // PLAY: al frame successivo rimuove il transform con la transizione attiva - il
-        // browser anima da solo il tragitto.
-        function morphDownloadButtonToDrive() {
-            const driveBtn = document.getElementById('driveModeBtn');
-            const downloadBtn = document.getElementById('sheetDownloadBtn');
-            const carIcon = document.getElementById('driveModeCarIcon');
-            const dlIcon = document.getElementById('driveModeDownloadIcon');
-            const sheet = document.getElementById('nowPlayingSheet');
-            if (!driveBtn || !downloadBtn || !sheet) { sheet?.classList.add('lyrics-open'); return; }
-
-            const startRect = downloadBtn.getBoundingClientRect();
-            sheet.classList.add('lyrics-open'); // driveModeBtn appare nella sua posizione finale (CSS), downloadBtn si nasconde
-            const endRect = driveBtn.getBoundingClientRect();
-            const dx = startRect.left - endRect.left;
-            const dy = startRect.top - endRect.top;
-
-            driveBtn.style.transition = 'none';
-            driveBtn.style.transform = `translate(${dx}px, ${dy}px)`;
-            carIcon.style.opacity = '0';
-            dlIcon.style.opacity = '1';
-            driveBtn.getBoundingClientRect(); // forza il reflow prima di riattivare la transizione
-            requestAnimationFrame(() => {
-                driveBtn.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
-                driveBtn.style.transform = 'translate(0, 0)';
-                carIcon.style.opacity = '1';
-                dlIcon.style.opacity = '0';
-            });
-            setTimeout(() => {
-                driveBtn.style.transition = '';
-                driveBtn.style.transform = '';
-            }, 420);
-        }
-
-        // Stesso principio al contrario: qui il punto di ARRIVO (la posizione del vero
-        // download) non è ancora noto finché non si toglie .lyrics-open, quindi prima si
-        // "congela" driveModeBtn con coordinate assolute in px (altrimenti, perdendo di
-        // colpo le regole CSS che lo tengono visibile in quello stato, sparirebbe di
-        // scatto invece di poter volare all'indietro).
-        function morphDriveButtonToDownload() {
-            const driveBtn = document.getElementById('driveModeBtn');
-            const downloadBtn = document.getElementById('sheetDownloadBtn');
-            const carIcon = document.getElementById('driveModeCarIcon');
-            const dlIcon = document.getElementById('driveModeDownloadIcon');
-            const sheet = document.getElementById('nowPlayingSheet');
-            if (!driveBtn || !downloadBtn || !sheet) { sheet?.classList.remove('lyrics-open'); return; }
-
-            const startRect = driveBtn.getBoundingClientRect();
-            driveBtn.style.position = 'fixed';
-            driveBtn.style.top = startRect.top + 'px';
-            driveBtn.style.left = startRect.left + 'px';
-            driveBtn.style.right = 'auto';
-            driveBtn.style.display = 'inline-flex';
-            driveBtn.style.transition = 'none';
-
-            sheet.classList.remove('lyrics-open'); // il download reale ricompare, invariato, al suo posto
-
-            const endRect = downloadBtn.getBoundingClientRect();
-            const dx = endRect.left - startRect.left;
-            const dy = endRect.top - startRect.top;
-            driveBtn.getBoundingClientRect(); // forza il reflow
-            requestAnimationFrame(() => {
-                driveBtn.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
-                driveBtn.style.transform = `translate(${dx}px, ${dy}px)`;
-                carIcon.style.opacity = '0';
-                dlIcon.style.opacity = '1';
-            });
-            setTimeout(() => {
-                // Ripristina le regole CSS normali (nascosto, in attesa della prossima
-                // apertura) invece di lasciare le coordinate fisse impostate qui sopra.
-                driveBtn.style.position = '';
-                driveBtn.style.top = '';
-                driveBtn.style.left = '';
-                driveBtn.style.right = '';
-                driveBtn.style.display = '';
-                driveBtn.style.transition = '';
-                driveBtn.style.transform = '';
-                carIcon.style.opacity = '';
-                dlIcon.style.opacity = '';
-            }, 420);
         }
 
         // Modalità Auto: NON duplica #lyricsScroll, lo sposta davvero dentro l'overlay
@@ -4005,8 +3941,34 @@
             driveModeOpen = true;
             document.getElementById('driveModeRotate').appendChild(scroll);
             document.getElementById('driveMode').classList.add('active');
+            requestDriveModeFullscreen();
             hapticFeedback();
             window.history.pushState({ page: 'driveMode' }, 'DriveMode');
+        }
+
+        // Vera Fullscreen API (nasconde barra di stato e barra di navigazione del
+        // telefono), non solo l'overlay nero della pagina: senza questo, sopra/sotto
+        // restavano visibili le barre di sistema con lo sfondo della pagina sotto -
+        // da qui le bande grigie. Nota: la prima volta che si entra in fullscreen,
+        // Android/Chrome può mostrare per un istante un avviso nativo del sistema
+        // operativo (non della pagina): non è sopprimibile via codice, ma sparisce da
+        // solo dopo un paio di secondi e non si ripresenta più a ogni apertura.
+        function requestDriveModeFullscreen() {
+            const el = document.documentElement;
+            const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+            if (!request) return;
+            try {
+                request.call(el)?.catch?.(() => {});
+            } catch (err) { /* fullscreen non disponibile: resta comunque l'overlay nero */ }
+        }
+
+        function exitDriveModeFullscreen() {
+            if (!(document.fullscreenElement || document.webkitFullscreenElement)) return;
+            const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+            if (!exit) return;
+            try {
+                exit.call(document)?.catch?.(() => {});
+            } catch (err) {}
         }
 
         // Fa solo da "ponte" verso il tasto/gesto Indietro di sistema, che deve poter
@@ -4029,12 +3991,13 @@
             const panel = document.getElementById('lyricsPanel');
             if (scroll && panel) panel.appendChild(scroll);
             document.getElementById('driveMode')?.classList.remove('active');
+            exitDriveModeFullscreen();
         }
 
         function closeLyricsPanel() {
             lyricsOpen = false;
             document.getElementById('artworkBand')?.classList.remove('lyrics-shown');
-            morphDriveButtonToDownload();
+            document.getElementById('nowPlayingSheet')?.classList.remove('lyrics-open');
         }
 
         // Aggiorna solo la UI del modal (etichetta ms + riempimento bicolore dello

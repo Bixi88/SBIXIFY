@@ -2194,6 +2194,15 @@
         let currentLoadedTitle = '';
         let isScrubbing = false; 
         let scrubPercentage = 0;
+        // Se l'utente scrubba subito dopo un cambio brano, mentre il video nuovo è
+        // ancora in caricamento, player.getDuration() torna 0 (o il valore residuo del
+        // brano precedente): un seekTo in quel momento punta al posto sbagliato e appena
+        // il player si aggancia al video vero il progress loop riporta tutto a 0.
+        // Qui accodiamo il seek richiesto (percentuale + id del brano target) e lo
+        // applichiamo non appena il player risulta davvero pronto su quel video, invece
+        // di eseguirlo a vuoto sul brano ancora in caricamento.
+        let pendingSeekPercentage = null;
+        let pendingSeekTrackId = null;
         
         const nowPlayingSheet = document.getElementById('nowPlayingSheet');
         const miniPlayer = document.getElementById('miniPlayer');
@@ -2718,6 +2727,7 @@
                 appState.isPlaying = true;
                 setPlayIconState(true);
                 updateDuration(); 
+                applyPendingSeekIfReady();
                 updateMediaSessionState(true);
                 updateMediaSessionPosition();
                 syncKeepAlive(true);
@@ -4181,9 +4191,39 @@
             miniProgressBar.classList.remove('scrubbing');
             progressTooltip.classList.add('hidden');
 
+            const currentTrack = nowPlayingTracks[nowPlayingIndex];
+            const activeVideoId = player?.getVideoData ? player.getVideoData().video_id : null;
             const duration = player.getDuration() || 0;
+
+            // Player non ancora agganciato al video del brano corrente (o durata non
+            // ancora nota): il seek va accodato, non eseguito ora - vedi commento sopra
+            // la dichiarazione di pendingSeekPercentage.
+            if (!currentTrack || !currentTrack.id || activeVideoId !== currentTrack.id || duration <= 0) {
+                pendingSeekPercentage = scrubPercentage;
+                pendingSeekTrackId = currentTrack?.id || null;
+                activeScrubType = null;
+                return;
+            }
+
             player.seekTo(duration * scrubPercentage, true);
             activeScrubType = null;
+            updateMediaSessionPosition();
+        }
+
+        // Applica un eventuale seek accodato da endScrubGeneral() non appena il player
+        // risulta davvero pronto (video giusto caricato, durata nota). Va chiamata sia dal
+        // progress loop sia da onPlayerStateChange, così lo scrub in coda parte al primo
+        // momento utile invece di aspettare fino al prossimo tick del loop (500ms).
+        function applyPendingSeekIfReady() {
+            if (pendingSeekPercentage === null || !player?.getVideoData) return;
+            const currentTrack = nowPlayingTracks[nowPlayingIndex];
+            const activeVideoId = player.getVideoData().video_id;
+            const duration = player.getDuration() || 0;
+            if (!currentTrack || currentTrack.id !== pendingSeekTrackId || activeVideoId !== pendingSeekTrackId || duration <= 0) return;
+
+            player.seekTo(duration * pendingSeekPercentage, true);
+            pendingSeekPercentage = null;
+            pendingSeekTrackId = null;
             updateMediaSessionPosition();
         }
 
@@ -6881,6 +6921,8 @@
                     const currentTrack = nowPlayingTracks[nowPlayingIndex];
                     const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
                     if (!currentTrack || !currentTrack.id || activeVideoId !== currentTrack.id) return;
+
+                    applyPendingSeekIfReady();
 
                     const currentTime = player.getCurrentTime(), duration = player.getDuration();
                     

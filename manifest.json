@@ -4,11 +4,11 @@
   "short_name": "SBIXIFY",
   "start_url": "./index.html",
   "scope": "./",
-  "display": "standalone",
-  "display_override": ["standalone", "window-controls-overlay"],
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone", "window-controls-overlay"],
   "orientation": "portrait",
-  "background_color": "#0D0E12",
-  "theme_color": "#0D0E12",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "192x192.png",

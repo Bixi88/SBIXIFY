@@ -3965,7 +3965,12 @@
             const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
             if (!request) return;
             try {
-                request.call(el)?.catch?.(() => {});
+                // navigationUI:'hide' chiede esplicitamente al browser di nascondere
+                // anche la sua UI di navigazione (non solo la barra indirizzi) invece
+                // di lasciarlo decidere da solo con 'auto' (il default) - vale solo per
+                // la Fullscreen API standard; i fallback prefissati (webkit/ms) qui
+                // sotto ignorano l'argomento in più senza dare errore.
+                request.call(el, { navigationUI: 'hide' })?.catch?.(() => {});
             } catch (err) { /* fullscreen non disponibile: resta comunque l'overlay nero */ }
         }
 

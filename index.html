@@ -36,7 +36,10 @@
            ============================================================ */
         :root {
             color-scheme: dark;
-            --bg-main: #0D0E12;
+            /* Nero puro (non più #0D0E12): quel grigio scuro creava una "cucitura"
+               visibile rispetto alle barre nere pure di stato/navigazione del sistema,
+               che restano #000000 a prescindere dal theme-color della pagina. */
+            --bg-main: #000000;
             --bg-gradient-top: #1D164A;
             --bg-gradient: linear-gradient(180deg, var(--bg-main) 0%, var(--bg-gradient-top) 35%, var(--bg-gradient-top) 55%, var(--bg-main) 100%);
             --bg-card: rgba(24, 21, 28, 0.72);
@@ -96,8 +99,8 @@
     <link rel="apple-touch-icon" href="192x192.png">
     
     <!-- Meta Theme Color multipli per Firefox ed Android -->
-    <meta name="theme-color" content="#0D0E12" id="metaThemeColor">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0D0E12" id="metaThemeColorDark">
+    <meta name="theme-color" content="#000000" id="metaThemeColor">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" id="metaThemeColorDark">
     <script>
         // Stesso principio dello sfondo/tema "critico" qui sopra: se all'apertura è già salvato
         // walkman (sfondo nero puro, non il viola/blu di "Moderna"), allinea SUBITO anche
@@ -3362,7 +3365,13 @@
                 if (!homeView) return;
                 const SWIPE_THRESHOLD = 60;   // px minimi di spostamento orizzontale
                 const DIRECTION_RATIO = 1.5;  // deve essere chiaramente più orizzontale che verticale
-                let startX = 0, startY = 0, tracking = false;
+                // Zona di bordo da cui deve PARTIRE il dito perché lo swipe destra conti
+                // come gesture di "indietro" invece che apertura Impostazioni: stesso
+                // principio dell'edge-swipe-back di iOS/Android (zona stretta a ridosso del
+                // bordo sinistro dello schermo). Fuori da questa zona, lo swipe destra apre
+                // il menu impostazioni come prima.
+                const EDGE_ZONE_PX = 24;
+                let startX = 0, startY = 0, tracking = false, startedAtEdge = false;
 
                 homeView.addEventListener('touchstart', (e) => {
                     const slider = document.getElementById('viewsSlider');
@@ -3370,6 +3379,7 @@
                     if (!tracking) return;
                     startX = e.touches[0].clientX;
                     startY = e.touches[0].clientY;
+                    startedAtEdge = startX <= EDGE_ZONE_PX;
                 }, { passive: true });
 
                 homeView.addEventListener('touchend', (e) => {
@@ -3390,12 +3400,26 @@
                         hapticFeedback();
                         showResultsView();
                     } else if (deltaX > SWIPE_THRESHOLD) {
-                        // Swipe destra: apre il menu impostazioni con animazione da sinistra
-                        const apiModal = document.getElementById('apiModal');
-                        if (apiModal && !apiModal.classList.contains('active')) {
+                        if (startedAtEdge) {
+                            // Swipe destra partito dal bordo sinistro: si comporta come il
+                            // pulsante/gesto "indietro" di sistema invece di aprire le
+                            // Impostazioni. Riusa lo stesso window.history.back() del back
+                            // hardware, quindi eredita gratis anche il doppio back per
+                            // uscire già gestito nel listener 'popstate' qui sotto (in Home,
+                            // senza altro da chiudere, il primo back mostra il toast "Tocca
+                            // di nuovo per uscire" e solo un secondo back entro 2.5s esce
+                            // davvero dall'app).
                             hapticFeedback();
-                            openApiModal();
-                            window.history.pushState({ page: 'modal' }, 'Modal');
+                            window.history.back();
+                        } else {
+                            // Swipe destra iniziato lontano dal bordo: apre il menu
+                            // impostazioni con animazione da sinistra, come prima.
+                            const apiModal = document.getElementById('apiModal');
+                            if (apiModal && !apiModal.classList.contains('active')) {
+                                hapticFeedback();
+                                openApiModal();
+                                window.history.pushState({ page: 'modal' }, 'Modal');
+                            }
                         }
                     }
                 }, { passive: true });
@@ -3473,7 +3497,7 @@
             // --bg-main a nero puro, quindi anche qui deve diventare nero, non restare sul
             // viola/blu di "Moderna" come accadeva prima (nessun aggiornamento a runtime).
             function updateMetaThemeColor(theme) {
-                let color = '#0D0E12';
+                let color = '#000000';
                 if (theme === 'walkman') color = '#000000';
                 else if (theme === 'immersive') {
                     // Il colore di questa skin è dinamico (dipende dal brano in riproduzione):

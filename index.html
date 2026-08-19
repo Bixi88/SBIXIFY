@@ -2203,6 +2203,20 @@
         // di eseguirlo a vuoto sul brano ancora in caricamento.
         let pendingSeekPercentage = null;
         let pendingSeekTrackId = null;
+        // Quirk dell'IFrame API di YouTube: subito dopo player.loadVideoById()/cueVideoById(),
+        // player.getVideoData().video_id si aggiorna SUBITO (sincrono), ma
+        // player.getCurrentTime()/getDuration() per un istante continuano a restituire i
+        // valori del video USCENTE, finché il nuovo video non comincia davvero a
+        // bufferizzare. Il solo confronto sul video_id (usato nel progress loop e nello
+        // scrub) non basta quindi a garantire che tempo/durata letti siano già quelli
+        // giusti: per un attimo si vede il minutaggio del brano precedente "travasato" su
+        // quello nuovo, poi uno scatto secco a 0 quando i dati veri arrivano.
+        // playLoadToken si incrementa a ogni loadVideoById(); playLoadConfirmedToken viene
+        // allineato solo dentro onPlayerStateChange, che scatta SOLO per eventi reali del
+        // player (BUFFERING/CUED/PLAYING/...) e quindi è la prima conferma affidabile che
+        // il video nuovo è davvero quello "attivo" e i suoi dati sono freschi.
+        let playLoadToken = 0;
+        let playLoadConfirmedToken = -1;
         
         const nowPlayingSheet = document.getElementById('nowPlayingSheet');
         const miniPlayer = document.getElementById('miniPlayer');
@@ -2715,6 +2729,12 @@
         }
 
         function onPlayerStateChange(event) {
+            // Prima conferma affidabile che il video "attivo" per l'IFrame è davvero
+            // quello dell'ultimo loadVideoById/cueVideoById: da qui in poi getCurrentTime()
+            // e getDuration() riflettono il video nuovo, non più quello uscente (vedi
+            // commento su playLoadToken sopra la sua dichiarazione).
+            playLoadConfirmedToken = playLoadToken;
+
             const playIcon = document.getElementById('playIcon');
             const miniPlayIcon = document.getElementById('miniPlayIcon');
 
@@ -4194,11 +4214,13 @@
             const currentTrack = nowPlayingTracks[nowPlayingIndex];
             const activeVideoId = player?.getVideoData ? player.getVideoData().video_id : null;
             const duration = player.getDuration() || 0;
+            const dataConfirmedFresh = playLoadConfirmedToken === playLoadToken;
 
             // Player non ancora agganciato al video del brano corrente (o durata non
-            // ancora nota): il seek va accodato, non eseguito ora - vedi commento sopra
-            // la dichiarazione di pendingSeekPercentage.
-            if (!currentTrack || !currentTrack.id || activeVideoId !== currentTrack.id || duration <= 0) {
+            // ancora nota, o video_id combacia ma i dati potrebbero essere ancora quelli
+            // residui del brano uscente): il seek va accodato, non eseguito ora - vedi
+            // commento sopra la dichiarazione di pendingSeekPercentage/playLoadToken.
+            if (!currentTrack || !currentTrack.id || activeVideoId !== currentTrack.id || duration <= 0 || !dataConfirmedFresh) {
                 pendingSeekPercentage = scrubPercentage;
                 pendingSeekTrackId = currentTrack?.id || null;
                 activeScrubType = null;
@@ -4220,6 +4242,7 @@
             const activeVideoId = player.getVideoData().video_id;
             const duration = player.getDuration() || 0;
             if (!currentTrack || currentTrack.id !== pendingSeekTrackId || activeVideoId !== pendingSeekTrackId || duration <= 0) return;
+            if (playLoadConfirmedToken !== playLoadToken) return;
 
             player.seekTo(duration * pendingSeekPercentage, true);
             pendingSeekPercentage = null;
@@ -4588,7 +4611,7 @@
 
             if (track.id) {
                 if (player?.cueVideoById) {
-                    try { player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); } catch (err) {}
+                    try { playLoadToken++; player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); } catch (err) {}
                 } else {
                     pendingCueTrackId = track.id;
                 }
@@ -6668,7 +6691,7 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
-            if (player?.loadVideoById) player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
+            if (player?.loadVideoById) { playLoadToken++; player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); }
             updateMediaSessionMetadata(track);
 
             // Ricordiamo il brano e la playlist/ricerca in ascolto: alla prossima apertura
@@ -6921,6 +6944,11 @@
                     const currentTrack = nowPlayingTracks[nowPlayingIndex];
                     const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
                     if (!currentTrack || !currentTrack.id || activeVideoId !== currentTrack.id) return;
+                    // video_id già combacia, ma potrebbe essere il solo dato aggiornato finora
+                    // (quirk IFrame API, vedi commento su playLoadToken): senza conferma da un
+                    // evento reale del player, getCurrentTime()/getDuration() potrebbero ancora
+                    // restituire i valori del video uscente.
+                    if (playLoadConfirmedToken !== playLoadToken) return;
 
                     applyPendingSeekIfReady();
 

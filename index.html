@@ -1718,6 +1718,86 @@
            è bianco/argento, quindi la riga di testo "cantata ora" risultava bianca invece
            che nel viola highlight riservato agli stati attivi. */
         html.walkman .lyrics-line.active { color: var(--walkman-highlight); }
+
+        /* ================= Modalità Auto (testo a schermo intero, orizzontale) =================
+           Pulsante gemello di #lyricsOffsetBtn ma a destra, stessa striscia in alto,
+           visibile SOLO quando i testi sono aperti (.lyrics-open). Apre #driveMode: un
+           overlay a schermo intero, sempre nero, che ospita (spostandolo davvero nel DOM,
+           non duplicandolo - vedi openDriveMode/closeDriveMode in JS) lo stesso identico
+           #lyricsScroll già usato nel pannello testi normale. Così riga attiva, scroll
+           automatico e offset di sincronizzazione restano l'UNICA fonte di verità, senza
+           bisogno di tenere due copie sincronizzate a mano.
+           Il device NON viene fisicamente ruotato (il manifest blocca l'orientamento a
+           "portrait" e affidarsi alla Screen Orientation API sarebbe inaffidabile su
+           installed PWA/car mount): il contenuto viene invece ruotato via CSS
+           (transform: rotate(90deg) su un riquadro 100vh x 100vw), il classico trucco per
+           ottenere una resa orizzontale a prescindere da come il telefono è fisicamente
+           montato in auto. */
+        #driveModeBtn {
+            display: none;
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 30px);
+            right: 24px;
+            z-index: 30;
+            padding: 8px;
+            font-size: 15px;
+            pointer-events: auto;
+        }
+        #driveModeBtn:active { opacity: 0.7; }
+        #nowPlayingSheet.lyrics-open #driveModeBtn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        html.immersive #driveModeBtn { color: #fff !important; }
+
+        #driveMode {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 9999;
+            overflow: hidden;
+        }
+        #driveMode.active { display: block; }
+        /* Riquadro ruotato: dimensionato con altezza/larghezza dello schermo scambiate
+           (100vh di larghezza, 100vw di altezza) e poi ruotato di 90°, così dopo la
+           rotazione riempie esattamente lo schermo reale in orizzontale. */
+        #driveModeRotate {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100vh;
+            height: 100vw;
+            transform: translate(-50%, -50%) rotate(90deg);
+            display: flex;
+            flex-direction: column;
+            padding: 10px 0;
+            box-sizing: border-box;
+        }
+        /* Testo molto più grande di quello del pannello normale (qui si legge al volo,
+           da lontano, mentre si guida) - stessa classe .lyrics-line/.lyrics-line.active
+           di sempre, quindi eredita automaticamente i colori giusti per ogni skin
+           (compreso l'override Walkman qui sopra) senza bisogno di nuove regole colore. */
+        #driveModeRotate .lyrics-line {
+            font-size: 30px;
+            padding: 10px 26px;
+        }
+        #driveModeRotate .lyrics-state { font-size: 15px; }
+        #driveModeRotate .lyrics-state i { font-size: 26px; }
+        /* Indizio discreto per tornare indietro: si può anche solo toccare ovunque sullo
+           schermo (vedi JS), questa piccola freccia in alto resta appena visibile per far
+           capire che è possibile farlo, senza rompere l'estetica "solo nero e parole". */
+        #driveModeHint {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-muted);
+            opacity: 0.35;
+            font-size: 13px;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="flex flex-col justify-between hidden py-4 box-border h-full app-body-bg relative">
@@ -1883,6 +1963,12 @@
             <i class="fa-solid fa-gauge-high"></i>
         </button>
 
+        <!-- Pulsante "Modalità auto": gemello di #lyricsOffsetBtn ma a destra, stessa
+             visibilità (solo quando i testi sono aperti). Vedi openDriveMode() in JS. -->
+        <button id="driveModeBtn" class="custom-text-accent active:scale-90 transition-transform" title="Modalità auto (schermo intero)">
+            <i class="fa-solid fa-car"></i>
+        </button>
+
         <div class="relative z-20 flex flex-col h-full px-6 pb-8 pt-4 justify-between pointer-events-none">
             <div id="sheetHeaderDrag" class="w-full flex flex-col items-center py-2 shrink-0 cursor-pointer pointer-events-auto">
                 <div id="sheetHeaderRow" class="flex items-center justify-between w-full px-1">
@@ -2026,6 +2112,18 @@
             </div>
             <div class="sleep-timer-sheet-divider"></div>
             <div id="correctSongResults"></div>
+        </div>
+    </div>
+
+    <!-- Modalità Auto: overlay a schermo intero, sempre nero, fuori da #nowPlayingSheet
+         (così resta indipendente dalle sue transizioni/transform). openDriveMode() sposta
+         davvero (non copia) #lyricsScroll dentro #driveModeRotate, subito dopo l'indizio
+         in alto: essendo #driveModeRotate un flex column, #lyricsScroll (già flex:1 di
+         suo) riempie tutto lo spazio restante come nel pannello normale. Tocca ovunque
+         per tornare alla modalità verticale (vedi closeDriveMode() in JS). -->
+    <div id="driveMode">
+        <div id="driveModeRotate">
+            <span id="driveModeHint"><i class="fa-solid fa-chevron-down"></i></span>
         </div>
     </div>
 
@@ -2910,6 +3008,12 @@
             
             window.addEventListener('popstate', (e) => {
                 let handled = false;
+                // Modalità Auto: overlay più in alto di tutti (sopra la stessa Now
+                // Playing), va controllata per prima.
+                if (driveModeOpen) {
+                    teardownDriveMode();
+                    handled = true;
+                }
                 // Sleep timer sheet: va controllata PRIMA della Now Playing, perché è
                 // "sopra" di essa nello stack degli overlay. Se è aperta, il back deve
                 // chiudere solo lei e lasciare l'utente sulla Now Playing, senza far
@@ -3095,6 +3199,15 @@
                 e.stopPropagation();
                 openLyricsOffsetModal();
                 window.history.pushState({ page: 'lyricsOffset' }, 'LyricsOffset');
+            });
+            document.getElementById('driveModeBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openDriveMode();
+            });
+            // Tocco ovunque sull'overlay: unico modo per tornare alla modalità verticale
+            // (nessun altro controllo visibile, come richiesto - "solo nero e parole").
+            document.getElementById('driveMode').addEventListener('click', () => {
+                closeDriveMode();
             });
             document.getElementById('lyricsOffsetSlider').addEventListener('input', (e) => {
                 applyLyricsOffsetPreview(parseInt(e.target.value, 10));
@@ -3730,6 +3843,50 @@
                 lyricsActiveIndex = -1;
                 updateActiveLyricLine(player.getCurrentTime());
             }
+        }
+
+        // Modalità Auto: NON duplica #lyricsScroll, lo sposta davvero dentro l'overlay
+        // (e lo rimette al suo posto in #lyricsPanel alla chiusura). Così tutta la logica
+        // già esistente - riga attiva, scroll automatico, offset, ricaricamento ad ogni
+        // cambio brano (che scrive dentro #lyricsScroll via document.getElementById,
+        // indipendentemente da dove si trovi nel DOM in quel momento) - continua a
+        // funzionare identica senza bisogno di tenere sincronizzate due copie.
+        let driveModeOpen = false;
+        function openDriveMode() {
+            const scroll = document.getElementById('lyricsScroll');
+            if (!scroll || scroll.children.length === 0) return;
+            driveModeOpen = true;
+            document.getElementById('driveModeRotate').appendChild(scroll);
+            document.getElementById('driveMode').classList.add('active');
+            hapticFeedback();
+            // Best-effort: nasconde anche le barre di sistema, se il browser lo consente.
+            // Ignorato in silenzio se non supportato/negato (es. iOS, alcune WebView) -
+            // la resa "nero e parole a schermo intero" funziona comunque via CSS da sola.
+            document.documentElement.requestFullscreen?.().catch(() => {});
+            window.history.pushState({ page: 'driveMode' }, 'DriveMode');
+        }
+
+        // Fa solo da "ponte" verso il tasto/gesto Indietro di sistema, che deve poter
+        // chiudere la Modalità Auto esattamente come il tocco sull'overlay: la pulizia
+        // vera (rimettere #lyricsScroll al suo posto, nascondere l'overlay, uscire dal
+        // fullscreen) vive nel gestore popstate qui sotto, stesso pattern già usato per
+        // sleep timer/correggi canzone/offset testo - un solo punto che gestisce sia il
+        // back fisico sia la chiusura "manuale".
+        function closeDriveMode() {
+            if (window.history.state && window.history.state.page === 'driveMode') {
+                window.history.back();
+            } else {
+                teardownDriveMode();
+            }
+        }
+
+        function teardownDriveMode() {
+            driveModeOpen = false;
+            const scroll = document.getElementById('lyricsScroll');
+            const panel = document.getElementById('lyricsPanel');
+            if (scroll && panel) panel.appendChild(scroll);
+            document.getElementById('driveMode')?.classList.remove('active');
+            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
         }
 
         function closeLyricsPanel() {

@@ -3378,17 +3378,13 @@
                         hapticFeedback();
                         showResultsView();
                     } else if (deltaX > SWIPE_THRESHOLD) {
-                        // Swipe destra (da qualunque punto dello schermo, non solo dal
-                        // bordo): si comporta come il pulsante/gesto "indietro" di sistema,
-                        // non apre più le Impostazioni (ora apribili solo dal pulsante
-                        // hamburger in alto a sinistra). Riusa lo stesso
-                        // window.history.back() del back hardware, quindi eredita gratis
-                        // anche il doppio back per uscire già gestito nel listener
-                        // 'popstate' qui sotto (in Home, senza altro da chiudere, il primo
-                        // back mostra il toast "Tocca di nuovo per uscire" e solo un
-                        // secondo back entro 2.5s esce davvero dall'app).
-                        hapticFeedback();
-                        window.history.back();
+                        // Swipe destra: apre il menu impostazioni con animazione da sinistra
+                        const apiModal = document.getElementById('apiModal');
+                        if (apiModal && !apiModal.classList.contains('active')) {
+                            hapticFeedback();
+                            openApiModal();
+                            window.history.pushState({ page: 'modal' }, 'Modal');
+                        }
                     }
                 }, { passive: true });
             })();

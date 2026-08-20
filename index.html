@@ -1028,10 +1028,10 @@
            così il colore dell'icona resta l'unico segnale di stato, leggibile su
            qualunque artwork sotto. */
         .qcard .qcard-pin {
-            position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center; font-size: 11px;
-            background: rgba(0,0,0,0.55); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,.45);
-            opacity: 0; transform: scale(0.4); pointer-events: none;
+            position: absolute; top: 4px; right: 6px; width: 24px; height: 24px;
+            display: flex; align-items: center; justify-content: center; font-size: 13px;
+            color: #fff; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6));
+            opacity: 0; transform: scale(0.4) rotate(-25deg); pointer-events: none;
             transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease;
             z-index: 5;
         }
@@ -1041,9 +1041,9 @@
            pin di una card già pinnata resta SEMPRE visibile, non solo durante il long
            press: è l'indicatore permanente di stato, non solo un'azione. Il cancella
            continua a comparire solo in .show-delete. */
-        .qcard.pinned .qcard-pin { opacity: 1; transform: scale(1); pointer-events: auto; }
+        .qcard.pinned .qcard-pin { opacity: 1; transform: scale(1) rotate(-25deg); pointer-events: auto; }
         .qcard.show-delete .qcard-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
-        .qcard.show-delete .qcard-pin { opacity: 1; transform: scale(1); pointer-events: auto; }
+        .qcard.show-delete .qcard-pin { opacity: 1; transform: scale(1) rotate(-25deg); pointer-events: auto; }
         .qcard.show-delete .circle { animation: qcardShake 0.3s ease; }
         @keyframes qcardShake {
             0%, 100% { transform: rotate(0deg); }

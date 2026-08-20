@@ -3728,6 +3728,7 @@
             setupSheetCloseSwipe();
             setupSettingsSheetSwipe();
             setupLyricsPanel();
+            setupVinylScrub();
             checkAndApplyMarquee();
         });
 
@@ -4203,6 +4204,187 @@
         // sheetCloseStart/Move/End più sotto): altrimenti, essendo questa fascia sopra
         // quell'area con eventi propri attivi su tutta la sua altezza, il gesto di
         // chiusura lì sotto non riceverebbe mai il tocco.
+        // ================= Scrub tramite rotazione manuale del vinile =================
+        // L'utente ruota il disco con il dito come un vero jog wheel: durante il gesto
+        // la barra di avanzamento e il tempo si muovono in anteprima live (stessa idea
+        // di updateScrubPositionGeneral sulla barra), ma il seek VERO su YouTube parte
+        // una sola volta al rilascio (endVinylScrub) - seekTo() ripetuto ad ogni
+        // micro-movimento del dito sarebbe scattoso e inutilmente pesante per il player.
+        // Il gesto è agganciato SOLO al disco (#sheetArtworkImg), non a tutta la fascia
+        // #artworkBand: quest'ultima ha già lo swipe orizzontale (testi) e verticale
+        // (chiusura sheet) gestiti da setupLyricsPanel - stopPropagation() qui sotto
+        // evita che lo stesso tocco attivi anche quelle gesture.
+        const VINYL_SECONDS_PER_ROTATION = 6; // secondi di brano per un giro completo del disco (regolabile)
+        const VINYL_SPIN_DURATION_S = 20; // deve combaciare con la durata di @keyframes vinylSpin in CSS
+
+        let vinylScrubActive = false;
+        let vinylScrubCenterX = 0, vinylScrubCenterY = 0;
+        let vinylScrubLastAngleDeg = 0;   // ultimo angolo del DITO letto (per calcolare i delta incrementali)
+        let vinylScrubBaseVisualAngle = 0; // angolo VISIVO del disco al momento del touchstart
+        let vinylScrubAccumulatedDeg = 0;  // rotazione accumulata durante il drag corrente (può superare ±360)
+        let vinylScrubStartTime = 0;       // tempo di riproduzione (secondi) al touchstart
+        let vinylScrubTargetTime = 0;      // tempo target ricalcolato ad ogni movimento
+
+        // Legge l'angolo di rotazione ATTUALMENTE visibile sul disco leggendo la matrice
+        // di trasformazione calcolata, sia che provenga dall'animazione CSS automatica
+        // (in corso o in pausa) sia da un drag precedente: evita un salto visivo
+        // all'inizio del gesto, qualunque sia lo stato di partenza del disco.
+        function getCurrentVinylVisualAngleDeg() {
+            if (!sheetArtworkImgEl) return 0;
+            const transform = getComputedStyle(sheetArtworkImgEl).transform;
+            if (!transform || transform === 'none') return 0;
+            const match = transform.match(/matrix\(([^)]+)\)/);
+            if (!match) return 0;
+            const [a, b] = match[1].split(',').map(parseFloat);
+            let angle = Math.atan2(b, a) * (180 / Math.PI);
+            if (angle < 0) angle += 360;
+            return angle;
+        }
+
+        function vinylAngleFromCenter(clientX, clientY) {
+            return Math.atan2(clientY - vinylScrubCenterY, clientX - vinylScrubCenterX) * (180 / Math.PI);
+        }
+
+        function startVinylScrub(clientX, clientY) {
+            if (!player?.getDuration || nowPlayingIndex === -1) return false;
+            // Lo scrub ha senso solo quando il disco sta effettivamente girando come un
+            // vinile: con "Rotazione vinile" disattivata nelle Impostazioni, o nella skin
+            // Immersive (che non usa mai il disco tondo animato), l'artwork è una semplice
+            // immagine ferma e va lasciata tale - niente gesto di rotazione/seek lì sopra.
+            if (!appState.vinylRotationEnabled) return false;
+            if (document.documentElement.classList.contains('immersive')) return false;
+
+            const currentTrack = nowPlayingTracks[nowPlayingIndex];
+            const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
+            // Stessa cautela già vista in updateScrubPositionGeneral: senza un player
+            // davvero agganciato al brano corrente, durata/tempo letti sarebbero quelli
+            // del brano uscente. Qui, a differenza della barra, scegliamo semplicemente
+            // di NON avviare il gesto (niente coda "pending"): scrubbare col vinile un
+            // brano che non è ancora pronto non ha un caso d'uso reale.
+            const playerReady = currentTrack && currentTrack.id && activeVideoId === currentTrack.id && playLoadConfirmedToken === playLoadToken;
+            if (!playerReady) return false;
+
+            const rect = sheetArtworkImgEl.getBoundingClientRect();
+            vinylScrubCenterX = rect.left + rect.width / 2;
+            vinylScrubCenterY = rect.top + rect.height / 2;
+            vinylScrubLastAngleDeg = vinylAngleFromCenter(clientX, clientY);
+            vinylScrubBaseVisualAngle = getCurrentVinylVisualAngleDeg();
+            vinylScrubAccumulatedDeg = 0;
+            vinylScrubStartTime = player.getCurrentTime() || 0;
+            vinylScrubTargetTime = vinylScrubStartTime;
+            vinylScrubActive = true;
+
+            // Stacca il disco dall'animazione CSS: da qui in poi la rotazione è guidata
+            // a mano dal gesto, non più dai keyframe automatici (che ignorerebbero
+            // comunque un transform impostato via JS, avendo priorità sullo stile inline).
+            sheetArtworkImgEl.classList.remove('vinyl-rotate', 'vinyl-paused');
+            sheetArtworkImgEl.style.transition = 'none';
+
+            progressBar.classList.add('scrubbing');
+            miniProgressBar.classList.add('scrubbing');
+            return true;
+        }
+
+        function moveVinylScrub(clientX, clientY) {
+            if (!vinylScrubActive) return;
+            const currentAngle = vinylAngleFromCenter(clientX, clientY);
+            let delta = currentAngle - vinylScrubLastAngleDeg;
+            // Normalizza il delta tra -180 e +180: senza questo, superare il punto in cui
+            // l'angolo "salta" da 179° a -179° (o viceversa) verrebbe letto come un balzo
+            // enorme invece che come il piccolo movimento continuo che è in realtà.
+            while (delta > 180) delta -= 360;
+            while (delta < -180) delta += 360;
+
+            vinylScrubAccumulatedDeg += delta;
+            vinylScrubLastAngleDeg = currentAngle;
+
+            const visualAngle = vinylScrubBaseVisualAngle + vinylScrubAccumulatedDeg;
+            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${visualAngle}deg)`;
+
+            const duration = player.getDuration() || 0;
+            const deltaSeconds = (vinylScrubAccumulatedDeg / 360) * VINYL_SECONDS_PER_ROTATION;
+            vinylScrubTargetTime = Math.max(0, Math.min(duration, vinylScrubStartTime + deltaSeconds));
+
+            // Stessa anteprima live già usata dallo scrub sulla barra di avanzamento
+            // (percentuale sulla barra + etichetta del tempo), qui pilotata dalla
+            // rotazione del disco invece che dal trascinamento diretto della barra.
+            const pct = duration > 0 ? (vinylScrubTargetTime / duration) * 100 : 0;
+            progressBar.style.width = `${pct}%`;
+            miniProgressBar.style.width = `${pct}%`;
+            const label = formatTime(vinylScrubTargetTime);
+            document.getElementById('currentTime').innerText = label;
+            document.getElementById('miniCurrentTime').innerText = label;
+        }
+
+        function endVinylScrub() {
+            if (!vinylScrubActive) return;
+            vinylScrubActive = false;
+            progressBar.classList.remove('scrubbing');
+            miniProgressBar.classList.remove('scrubbing');
+            sheetArtworkImgEl.style.transition = '';
+
+            try { player.seekTo(vinylScrubTargetTime, true); } catch (err) {}
+            updateMediaSessionPosition();
+
+            // Riaggancia il disco all'animazione automatica ripartendo dall'angolo VISIVO
+            // raggiunto, invece di farlo scattare a 0°: un animation-delay negativo fa
+            // "credere" all'animazione di essere già a quel punto del suo ciclo di 20s.
+            if (appState.vinylRotationEnabled) {
+                const finalAngle = ((vinylScrubBaseVisualAngle + vinylScrubAccumulatedDeg) % 360 + 360) % 360;
+                const offsetSeconds = (finalAngle / 360) * VINYL_SPIN_DURATION_S;
+                sheetArtworkImgEl.style.animationDelay = `-${offsetSeconds}s`;
+                sheetArtworkImgEl.style.transform = '';
+                sheetArtworkImgEl.classList.add('vinyl-rotate');
+                sheetArtworkImgEl.classList.toggle('vinyl-paused', !appState.isPlaying);
+            } else {
+                // Rotazione vinile disattivata nelle Impostazioni: il disco torna al suo
+                // stato statico normale (solo zoom-crop, niente rotazione residua).
+                sheetArtworkImgEl.style.transform = '';
+            }
+        }
+
+        function setupVinylScrub() {
+            if (!sheetArtworkImgEl) return;
+            let dragging = false;
+
+            sheetArtworkImgEl.addEventListener('touchstart', (e) => {
+                const t = e.touches[0];
+                dragging = startVinylScrub(t.clientX, t.clientY);
+                if (dragging) e.stopPropagation();
+            }, { passive: true });
+            sheetArtworkImgEl.addEventListener('touchmove', (e) => {
+                if (!dragging) return;
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+                moveVinylScrub(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: false });
+            sheetArtworkImgEl.addEventListener('touchend', (e) => {
+                if (!dragging) return;
+                dragging = false;
+                e.stopPropagation();
+                endVinylScrub();
+            }, { passive: true });
+            sheetArtworkImgEl.addEventListener('touchcancel', (e) => {
+                if (!dragging) return;
+                dragging = false;
+                e.stopPropagation();
+                endVinylScrub();
+            }, { passive: true });
+
+            // Supporto mouse per test/debug da desktop (PWA resta comunque un'app mobile,
+            // ma è comodo poter provare il gesto anche in un browser normale durante lo sviluppo).
+            sheetArtworkImgEl.addEventListener('mousedown', (e) => {
+                dragging = startVinylScrub(e.clientX, e.clientY);
+                if (dragging) e.stopPropagation();
+            });
+            window.addEventListener('mousemove', (e) => { if (dragging) moveVinylScrub(e.clientX, e.clientY); });
+            window.addEventListener('mouseup', () => {
+                if (!dragging) return;
+                dragging = false;
+                endVinylScrub();
+            });
+        }
+
         function setupLyricsPanel() {
             const band = document.getElementById('artworkBand');
             const SWIPE_THRESHOLD = 40;

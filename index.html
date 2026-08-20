@@ -1846,6 +1846,15 @@
             pointer-events: none;
         }
         html.immersive #driveModeBtn { color: #fff !important; }
+        /* Pulsante download in Immersive: icona bianca che su artwork chiare/vivaci
+           tende a confondersi con lo sfondo - un filo di contorno nero (0.8px) la
+           mantiene leggibile senza cambiarne il colore. -webkit-text-stroke disegna
+           il contorno attorno al glifo dell'icona (Font Awesome è un font, non un
+           path SVG), quindi va applicato all'elemento <i> che contiene il glifo. */
+        html.immersive #sheetDownloadBtn i {
+            -webkit-text-stroke: 0.8px #000;
+            text-stroke: 0.8px #000;
+        }
         #nowPlayingSheet.lyrics-open #driveModeBtn {
             opacity: 1;
             pointer-events: auto;

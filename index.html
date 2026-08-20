@@ -244,6 +244,16 @@
         #nowPlayingSheet.expanded {
             transform: translateY(-100%);
         }
+        /* BUGFIX: su alcune WebView Android/Chromium (Brave incluso) .home-header/
+           .results-header, essendo "position: sticky" dentro un contenitore con
+           overflow-y:auto, vengono promossi a un layer di compositing proprio che a
+           volte ignora l'ordine di stacking reale rispetto a #nowPlayingSheet (fixed,
+           z-index:100) e restano visibili "sopra" la sheet aperta. Nascosti esplicitamente
+           in quel momento con :has(), senza toccare il JS. */
+        body:has(#nowPlayingSheet.expanded) .home-header,
+        body:has(#nowPlayingSheet.expanded) .results-header {
+            visibility: hidden;
+        }
         /* Il pulsante "freccia giù" per chiudere la Now Playing sheet è stato rimosso in
            TUTTE le skin (Immersive lo nascondeva già, ora anche Moderna/Walkman): la
            chiusura resta comunque disponibile via swipe verso il basso su

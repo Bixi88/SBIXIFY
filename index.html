@@ -2859,6 +2859,32 @@
             }
         }
 
+        // --- BANNER OFFLINE ---
+        // A differenza di showToast (pensato per messaggi che spariscono da soli dopo
+        // pochi secondi), qui serve un avviso persistente: resta finché la connessione
+        // non torna, perché l'utente deve saperlo per tutta la durata del problema
+        // (ricerche, import Spotify, caricamento brani nuovi falliranno silenziosamente
+        // altrimenti). Costruito dinamicamente come showToast, niente markup statico da toccare.
+        function showOfflineBanner() {
+            if (document.getElementById('sbixify-offline-banner')) return; // già visibile
+            const banner = document.createElement('div');
+            banner.id = 'sbixify-offline-banner';
+            banner.className = 'fixed top-0 left-0 right-0 z-[200] text-center text-xs font-medium py-2 px-4 bg-red-600 text-white';
+            banner.style.paddingTop = 'calc(0.5rem + env(safe-area-inset-top))';
+            banner.innerHTML = '<i class="fa-solid fa-wifi-slash mr-2"></i>Sei offline. Alcune funzioni potrebbero non funzionare.';
+            document.body.appendChild(banner);
+        }
+
+        function hideOfflineBanner() {
+            document.getElementById('sbixify-offline-banner')?.remove();
+        }
+
+        window.addEventListener('online', hideOfflineBanner);
+        window.addEventListener('offline', showOfflineBanner);
+        // Controllo anche all'avvio: l'app potrebbe essere aperta da PWA già offline
+        // (es. riaperta in aereo), non solo passare online->offline durante l'uso.
+        if (!navigator.onLine) showOfflineBanner();
+
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault(); deferredPrompt = e;
             if (document.getElementById('pwaInstallBtn')) document.getElementById('pwaInstallBtn').classList.remove('hidden');
@@ -2873,7 +2899,7 @@
             player = new YT.Player('ytPlayerContainer', {
                 height: '100%', width: '100%', videoId: '',
                 playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1, 'fs': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
-                events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange }
+                events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange, 'onError': onPlayerError }
             });
         }
 
@@ -2960,6 +2986,39 @@
             }
         }
 
+        // --- GESTIONE ERRORI DEL PLAYER (video rimosso, privato, embed disabilitato...) ---
+        // Senza questo handler, un video non riproducibile lascia il player semplicemente
+        // fermo e muto: l'utente non capisce cosa sia successo e deve intervenire a mano.
+        // Codici errore ufficiali IFrame API: 2 = parametro non valido, 5 = errore HTML5,
+        // 100 = video non trovato/rimosso/privato, 101/150 = embed disabilitato dal proprietario.
+        let playerErrorStreak = 0; // contatore errori consecutivi, per evitare loop infiniti
+
+        function onPlayerError(event) {
+            const track = nowPlayingTracks[nowPlayingIndex];
+            const label = track ? `"${track.title}"` : 'Il brano';
+            const code = event?.data;
+
+            let reason = 'non riproducibile';
+            if (code === 100) reason = 'non disponibile (rimosso o privato)';
+            else if (code === 101 || code === 150) reason = 'non disponibile per limitazioni del proprietario';
+
+            playerErrorStreak++;
+
+            // Troppi errori di fila: probabile problema di rete/API piuttosto che un singolo
+            // video rotto. Ci fermiamo invece di bruciare l'intera coda in un ciclo silenzioso.
+            if (playerErrorStreak >= 5) {
+                showToast('Troppi brani non riproducibili di seguito. Riprova più tardi.');
+                playerErrorStreak = 0;
+                return;
+            }
+
+            showToast(`${label} ${reason}. Passo al prossimo.`);
+
+            // Piccolo ritardo per non incatenare più chiamate a loadTrack nello stesso tick
+            // se più errori arrivano ravvicinati (es. autoplay su un brano già rotto).
+            setTimeout(() => nextTrack(), 400);
+        }
+
         // Avvia/ferma l'audio "keep-alive" in sincrono con lo stato reale del player YouTube:
         // deve girare SOLO mentre stiamo davvero riproducendo, altrimenti la scheda risulterebbe
         // "sonora" anche in pausa (icona speaker nel tab) senza motivo.
@@ -2989,6 +3048,7 @@
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
+                playerErrorStreak = 0; // un brano è ripartito con successo: azzera il contatore errori
                 appState.isPlaying = true;
                 setPlayIconState(true);
                 updateDuration(); 

@@ -254,6 +254,23 @@
         body:has(#nowPlayingSheet.expanded) .results-header {
             visibility: hidden;
         }
+
+        /* Striscia "riserva gesto di sistema": in display:fullscreen la nav bar di
+           Android è nascosta e per farla ricomparire serve uno swipe dal bordo
+           inferiore - lo STESSO gesto usato per scrollare le liste, che partendo
+           proprio da lì veniva catturato anche dal contenuto sottostante (doppio
+           effetto: scroll + reveal). Questa striscia invisibile e non scrollabile,
+           sempre sopra a tutto, intercetta il touchstart prima che raggiunga la
+           lista: con touch-action:none il browser non avvia mai uno scroll da un
+           tocco iniziato qui, lasciando il gesto libero per il sistema. Non copre
+           il mini player (che sta più in alto, staccato dal bordo). */
+        #gestureEdgeGuard {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            height: max(24px, env(safe-area-inset-bottom, 0px));
+            touch-action: none;
+            z-index: 20;
+        }
         /* Il pulsante "freccia giù" per chiudere la Now Playing sheet è stato rimosso in
            TUTTE le skin (Immersive lo nascondeva già, ora anche Moderna/Walkman): la
            chiusura resta comunque disponibile via swipe verso il basso su
@@ -1867,6 +1884,10 @@
         <input type="text" name="username" autocomplete="username" tabindex="-1">
         <input type="password" name="password" autocomplete="new-password" tabindex="-1">
     </div>
+
+    <!-- Vedi commento CSS su #gestureEdgeGuard: riserva il bordo inferiore al gesto
+         di sistema Android (reveal nav bar), invece che allo scroll delle liste. -->
+    <div id="gestureEdgeGuard" aria-hidden="true"></div>
 
     <!-- Sezione Principale -->
     <main class="flex-1 flex flex-col overflow-hidden z-10 relative app-gradient-bg">

@@ -1010,14 +1010,35 @@
         .qcard.latest .name { color:var(--accent); }
         .qcard .name { font-size:12.5px; font-weight:600; text-align:center; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; color:var(--text-main); }
         .qcard .qcard-delete {
-            position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%;
+            position: absolute; bottom: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center; font-size: 11px;
             background: var(--accent); color: var(--bg-main); box-shadow: 0 4px 10px rgba(0,0,0,.45);
             opacity: 0; transform: scale(0.4); pointer-events: none;
             transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
             z-index: 5;
         }
+        /* Pulsante "pin": stesso ingombro/geometria del cancella, ma in alto a destra
+           (dove prima stava il cancella - vedi commento sopra). Icona bianca a riposo;
+           quando la card è pinnata (classe .pinned sul .qcard, persistente in
+           localStorage/render, non solo durante lo show-delete) l'icona passa al
+           colore accento della skin attiva - var(--accent) di base, var(--walkman-highlight)
+           per Walkman (dove --accent normale è il grigio chiaro dei pulsanti, non il
+           viola: qui invece vogliamo proprio il viola "highlight", coerente con vinile/
+           testi sincronizzati che già lo usano). Sfondo neutro scuro fisso (non accento)
+           così il colore dell'icona resta l'unico segnale di stato, leggibile su
+           qualunque artwork sotto. */
+        .qcard .qcard-pin {
+            position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 11px;
+            background: rgba(0,0,0,0.55); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,.45);
+            opacity: 0; transform: scale(0.4); pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease;
+            z-index: 5;
+        }
+        .qcard.pinned .qcard-pin { color: var(--accent); }
+        html.walkman .qcard.pinned .qcard-pin { color: var(--walkman-highlight); }
         .qcard.show-delete .qcard-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
+        .qcard.show-delete .qcard-pin { opacity: 1; transform: scale(1); pointer-events: auto; }
         .qcard.show-delete .circle { animation: qcardShake 0.3s ease; }
         @keyframes qcardShake {
             0%, 100% { transform: rotate(0deg); }
@@ -5224,17 +5245,52 @@
 
         // Aggiunge (o riporta in cima, se già presente) una playlist alla cache Recenti.
         // type è sempre 'playlist': i Recenti mostrano solo playlist importate da Spotify.
+        // Le playlist pinnate (it.pinned) NON vengono mai spostate né fatte scadere qui:
+        // solo i loro metadati (nome/artwork) vengono aggiornati sul posto. La rotazione
+        // (unshift + taglio a RECENT_MAX) riguarda solo il sottoinsieme non pinnato -
+        // vedi togglePinRecentPlaylist più sotto per come le pinnate restano sempre
+        // davanti nell'array, "ferme", mentre le altre continuano a scorrere sotto.
         function addRecentItem({ name, type, query = null, url = null, artwork = null, track = null }) {
             if (!name) return;
             let items = loadRecentItems();
+            const existingIdx = items.findIndex(it => {
+                if (it.type !== type) return false;
+                return type === 'playlist' ? it.url === url : it.query === query;
+            });
+            if (existingIdx !== -1 && items[existingIdx].pinned) {
+                items[existingIdx] = { ...items[existingIdx], name, artwork };
+                saveRecentItems(items);
+                renderRecentHome();
+                return;
+            }
             items = items.filter(it => {
                 if (it.type !== type) return true;
                 if (type === 'playlist') return it.url !== url;
                 return it.query !== query;
             });
-            items.unshift({ name, type, query, url, artwork, track, ts: Date.now() });
-            items = items.slice(0, RECENT_MAX);
+            const pinnedItems = items.filter(it => it.pinned);
+            const others = items.filter(it => !it.pinned);
+            others.unshift({ name, type, query, url, artwork, track, ts: Date.now(), pinned: false });
+            // Il tetto RECENT_MAX vale solo per le non pinnate: le pinnate non contano
+            // ai fini dello scarto (l'utente le ha fissate apposta, non devono sparire).
+            const maxOthers = Math.max(0, RECENT_MAX - pinnedItems.length);
+            items = [...pinnedItems, ...others.slice(0, maxOthers)];
             saveRecentItems(items);
+            renderRecentHome();
+        }
+
+        // Accende/spegne il pin di una playlist nei Recenti. Dopo il toggle l'array viene
+        // ricompattato con le pinnate sempre in testa (nel loro ordine relativo esistente,
+        // la nuova semplicemente si aggiunge in fondo al gruppo) e le non pinnate a
+        // seguire: è questo raggruppamento a farle apparire "ferme" mentre le altre
+        // continuano a ruotare.
+        function togglePinRecentPlaylist(idx) {
+            const items = loadRecentItems();
+            if (!items[idx]) return;
+            items[idx] = { ...items[idx], pinned: !items[idx].pinned };
+            const pinnedItems = items.filter(it => it.pinned);
+            const others = items.filter(it => !it.pinned);
+            saveRecentItems([...pinnedItems, ...others]);
             renderRecentHome();
         }
 
@@ -5263,8 +5319,11 @@
 
             grid.classList.remove('hidden');
             grid.innerHTML = items.map((it, i) => `
-                <div class="qcard${i === 0 ? ' latest' : ''}" data-index="${i}">
+                <div class="qcard${i === 0 ? ' latest' : ''}${it.pinned ? ' pinned' : ''}" data-index="${i}">
                     <div class="circle" style="${it.artwork ? `background-image:url('${it.artwork.replace(/'/g, "\\'")}')` : ''}"></div>
+                    <button class="qcard-pin" data-index="${i}" title="${it.pinned ? 'Spunta' : 'Pin'}">
+                        <i class="fa-solid fa-thumbtack"></i>
+                    </button>
                     <button class="qcard-delete" data-index="${i}" title="Rimuovi">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
@@ -5299,7 +5358,7 @@
                 card.addEventListener('contextmenu', (e) => e.preventDefault());
 
                 card.addEventListener('click', (e) => {
-                    if (e.target.closest('.qcard-delete')) return; // gestito dal listener dedicato
+                    if (e.target.closest('.qcard-delete') || e.target.closest('.qcard-pin')) return; // gestiti dai listener dedicati
                     // Il click che segue naturalmente il rilascio dopo il tap prolungato non deve
                     // riaprire/richiudere subito il pulsante appena comparso.
                     if (longPressFired) { longPressFired = false; return; }
@@ -5313,6 +5372,11 @@
                 card.querySelector('.qcard-delete').addEventListener('click', (e) => {
                     e.stopPropagation();
                     removeRecentItemFromHome(idx, items[idx]);
+                });
+
+                card.querySelector('.qcard-pin').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    togglePinRecentPlaylist(idx);
                 });
             });
 

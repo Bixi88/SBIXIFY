@@ -1045,8 +1045,10 @@
         /* Contorno sottile sul solo glifo (stesso trucco -webkit-text-stroke già usato
            per il logo/mag-btn qui sopra), non un bordo sul pulsante: serve solo a dare
            un po' di peso/leggibilità all'icona ora che non ha più il cerchio dietro.
-           Nero fisso su tutte le skin. */
-        .qcard-pin i { -webkit-text-stroke: 1.5px #000; text-stroke: 1.5px #000; }
+           Bianco su Moderna/Walkman, nero su Immersive (dove lo sfondo/artwork tende
+           a schiarire e il bianco si perderebbe). */
+        .qcard-pin i { -webkit-text-stroke: 0.5px #fff; text-stroke: 0.5px #fff; }
+        html.immersive .qcard-pin i { -webkit-text-stroke: 0.5px #000; text-stroke: 0.5px #000; }
         .qcard.show-delete .qcard-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
         .qcard.show-delete .qcard-pin { opacity: 1; transform: scale(1) rotate(-25deg); pointer-events: auto; }
         .qcard.show-delete .circle { animation: qcardShake 0.3s ease; }

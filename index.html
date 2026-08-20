@@ -5087,7 +5087,7 @@
                 });
                 if (tracks.length === 0) return;
                 const cleanName = cleanSpotifyPlaylistName(scraped.name);
-                const artwork = scraped.cover || pickRandomPlaylistArtwork(scraped.tracks);
+                const artwork = isSpotifyMosaicCover(scraped.cover) ? pickRandomPlaylistArtwork(scraped.tracks) : scraped.cover;
                 setCachedPlaylistTracks(url, { name: cleanName, artwork, tracks });
                 updateRecentPlaylistMeta(url, { name: cleanName, artwork });
             } catch (err) {
@@ -6099,9 +6099,21 @@
             return cleanSpotifyPlaylistName(name);
         }
 
-        // Copertina di ripiego per una playlist Spotify senza cover propria: pesca un
-        // brano a caso tra quelli della playlist e usa la sua copertina (già arrivata
-        // dall'API Spotify insieme al brano).
+        // Copertina di una playlist Spotify: se è quella auto-generata a collage (il
+        // "quadrante" con le prime copertine dei brani, servito da Spotify sotto il
+        // dominio mosaic.scdn.co quando la playlist non ha una cover propria) NON la
+        // usiamo - tagliata nel cerchio dell'app viene brutta - e peschiamo invece un
+        // brano a caso tra quelli della playlist, usando la sua copertina singola.
+        // Una cover vera impostata da chi ha creato la playlist (dominio i.scdn.co)
+        // resta invece intatta.
+        function isSpotifyMosaicCover(url) {
+            if (!url) return true; // nessuna cover: trattata come "va sostituita"
+            try {
+                return new URL(url).hostname === 'mosaic.scdn.co';
+            } catch (e) {
+                return false;
+            }
+        }
         function pickRandomPlaylistArtwork(rawTracks) {
             const withArt = rawTracks.filter(t => t.thumbnail);
             if (withArt.length === 0) return null;
@@ -6210,7 +6222,10 @@
                 renderTracklist(0);
 
                 showResultsView(cleanName);
-                const playlistArtwork = meta.cover || pickRandomPlaylistArtwork(rawTracks);
+                // Copertina playlist: sempre quella di un brano a caso (mai il collage
+                // a 4 quadranti generato da Spotify quando la playlist non ha una cover
+                // propria - dentro il cerchio dell'app viene tagliato in modo brutto).
+                const playlistArtwork = isSpotifyMosaicCover(meta.cover) ? pickRandomPlaylistArtwork(rawTracks) : meta.cover;
                 const recentName = formatRecentPlaylistName(meta.name);
                 addRecentItem({ name: recentName, type: 'playlist', url, artwork: playlistArtwork });
                 addRecentPlaylist({ name: recentName, url, artwork: playlistArtwork });

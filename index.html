@@ -4279,6 +4279,13 @@
             // comunque un transform impostato via JS, avendo priorità sullo stile inline).
             sheetArtworkImgEl.classList.remove('vinyl-rotate', 'vinyl-paused');
             sheetArtworkImgEl.style.transition = 'none';
+            // IMPORTANTE: scrivere SUBITO il transform manuale, qui, e non aspettare il
+            // primo moveVinylScrub. Rimuovendo le classi sopra, il disco perde all'istante
+            // sia l'animazione che qualunque transform inline (non ancora scritto): nel
+            // vuoto tra questo momento e il primo touchmove, il browser applicherebbe la
+            // regola CSS di base (solo scale, niente rotate), visibile come uno scatto
+            // del disco che "si centra" per un istante prima di seguire il dito.
+            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${vinylScrubBaseVisualAngle}deg)`;
 
             progressBar.classList.add('scrubbing');
             miniProgressBar.classList.add('scrubbing');

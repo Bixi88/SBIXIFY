@@ -1037,6 +1037,11 @@
         }
         .qcard.pinned .qcard-pin { color: var(--accent); }
         html.walkman .qcard.pinned .qcard-pin { color: var(--walkman-highlight); }
+        /* A differenza del cancella (che resta nascosto finché non tieni premuto), il
+           pin di una card già pinnata resta SEMPRE visibile, non solo durante il long
+           press: è l'indicatore permanente di stato, non solo un'azione. Il cancella
+           continua a comparire solo in .show-delete. */
+        .qcard.pinned .qcard-pin { opacity: 1; transform: scale(1); pointer-events: auto; }
         .qcard.show-delete .qcard-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
         .qcard.show-delete .qcard-pin { opacity: 1; transform: scale(1); pointer-events: auto; }
         .qcard.show-delete .circle { animation: qcardShake 0.3s ease; }

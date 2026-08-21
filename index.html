@@ -929,13 +929,23 @@
             background: linear-gradient(to bottom, var(--bg-main) 0%, transparent 100%);
             pointer-events: none;
         }
-        .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; }
+        .home-header-row { display:flex; align-items:center; justify-content:flex-start; gap:10px; height:40px; position:relative; }
         .menu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:transparent; flex:0 0 auto; }
-        .menu-bars { width:18px; height:13px; display:flex; flex-direction:column; justify-content:space-between; }
+        /* Le due barre restano nel DOM (il bottone resta cliccabile, stessa area di
+           40x40) ma invisibili: l'utente vuole l'icona nascosta, non il pulsante. Il
+           pallino rosso di errore (#apiErrorBadge, sibling) non è "l'icona" ma un avviso
+           di stato reale, quindi resta visibile quando attivo. */
+        .menu-bars { width:18px; height:13px; display:flex; flex-direction:column; justify-content:space-between; opacity:0; }
         .menu-bars span { display:block; height:2px; border-radius:2px; background:var(--text-main); width:100%; }
         .menu-bars span:last-child { width:65%; }
         .error-badge { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:#ff4d4d; border:1px solid var(--bg-main); }
-        .app-title { font-size:26px; font-weight:700; letter-spacing:-0.01em; text-align:left; margin:0; }
+        /* Titolo "SBIXIFY": centrato rispetto all'intera riga header (non al solo spazio
+           libero tra i due pulsanti laterali) con position:absolute + translate, così
+           resta centrato indipendentemente dal pulsante aggiornamento a destra (quasi
+           sempre nascosto, quindi larghezza asimmetrica rispetto al pulsante impostazioni
+           a sinistra se centrato "a occhio" col solo flexbox). pointer-events:none perché
+           non deve intercettare i tap destinati ai due pulsanti sotto/accanto. */
+        .app-title { font-size:20px; font-weight:700; letter-spacing:-0.01em; text-align:center; margin:0; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); white-space:nowrap; pointer-events:none; }
         .update-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); color:var(--text-main); flex:0 0 auto; margin-left:auto; }
         .update-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--accent); border:1px solid var(--bg-main); }
 
@@ -1957,7 +1967,7 @@
                                 <span class="menu-bars"><span></span><span></span></span>
                                 <span id="apiErrorBadge" class="error-badge hidden" title="Servizio di ricerca non disponibile"></span>
                             </button>
-                            <h1 class="app-title display">SBIXI<span class="custom-text-accent">FY</span></h1>
+                            <h1 class="app-title display"><span class="custom-text-accent">S</span>BIXI<span class="custom-text-accent">FY</span></h1>
                             <button id="appUpdateBtn" class="hidden update-btn" title="Aggiorna App">
                                 <i class="fa-solid fa-arrows-rotate text-sm"></i>
                                 <span class="update-dot"></span>

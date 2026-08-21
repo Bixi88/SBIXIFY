@@ -3341,7 +3341,7 @@
             function handleSearchSubmit() {
                 const value = searchInput.value.trim();
                 if (!value) { return; }
-                if (isSpotifyPlaylistLink(value)) {
+                if (isSpotifyPlaylistLink(value) || isSpotifyArtistLink(value)) {
                     importSpotifyPlaylist(value);
                     searchInput.value = '';
                 } else {
@@ -5401,10 +5401,13 @@
         // semplicemente non risolti finché la playlist non viene aperta davvero (stessa
         // logica, invariata, dell'import manuale).
         async function silentRefreshPlaylist(url) {
-            const playlistId = extractSpotifyPlaylistId(url);
+            const isArtist = isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
+            const playlistId = isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url);
             if (!playlistId) return;
             try {
-                const scraped = await fetchSpotifyEmbedPlaylist(playlistId, true);
+                const scraped = isArtist
+                    ? await fetchSpotifyArtistTopTracks(playlistId, true)
+                    : await fetchSpotifyEmbedPlaylist(playlistId, true);
                 const tracks = scraped.tracks.map(t => {
                     const cached = getCachedTrack(t.title, t.artist);
                     const thumbnail = t.thumbnail || cached?.thumbnail || null;
@@ -5419,12 +5422,12 @@
                     };
                 });
                 if (tracks.length === 0) return;
-                const cleanName = cleanSpotifyPlaylistName(scraped.name);
+                const cleanName = isArtist ? cleanSpotifyArtistName(scraped.name) : cleanSpotifyPlaylistName(scraped.name);
                 const artwork = isSpotifyMosaicCover(scraped.cover) ? (pickRandomPlaylistArtwork(tracks) || scraped.cover) : scraped.cover;
                 setCachedPlaylistTracks(url, { name: cleanName, artwork, tracks });
                 updateRecentPlaylistMeta(url, { name: cleanName, artwork });
             } catch (err) {
-                console.warn(`Auto-refresh fallito per playlist ${url}:`, err);
+                console.warn(`Auto-refresh fallito per playlist/artista ${url}:`, err);
             }
         }
 
@@ -6407,6 +6410,116 @@
                 || /^spotify:playlist:[a-zA-Z0-9]{15,25}$/i.test(text);
         }
 
+        // --- FALLBACK: LINK ARTISTA SPOTIFY (import dei "Popular", i suoi top brani) ---
+        // Un link tipo open.spotify.com/artist/<id> non è una playlist "pronta" con un
+        // ordine esatto deciso da qualcuno: è un riferimento generico a un artista. Non
+        // essendoci modo di leggere la classifica Top Tracks "ufficiale" di Spotify senza
+        // API/chiave, il miglior fallback disponibile è leggere la sezione "Popular" che
+        // Spotify mostra in cima alla pagina pubblica dell'artista (5 brani, gli stessi che
+        // vede chiunque apra quella pagina) e trattarli come una playlist d'importazione.
+        function extractSpotifyArtistId(url) {
+            const match = url.match(/artist[\/:]([a-zA-Z0-9]{15,25})/);
+            return match ? match[1] : null;
+        }
+
+        function isSpotifyArtistLink(text) {
+            return /spotify\.com\/(?:[a-z-]+\/)?artist\/[a-zA-Z0-9]{15,25}/i.test(text)
+                || /^spotify:artist:[a-zA-Z0-9]{15,25}$/i.test(text);
+        }
+
+        // A differenza delle playlist, Spotify non offre una pagina embed per un artista
+        // (l'embed widget copre solo brano/album/playlist/episodio) e la pagina pubblica
+        // espone nell'HTML iniziale SOLO i 5 brani della sezione "Popular" (verificato:
+        // gli altri, visibili nell'app Spotify dopo "Mostra altro", arrivano via chiamate
+        // successive che senza API ufficiale non possiamo replicare). Per arrivare a
+        // ARTIST_TOP_TRACKS_COUNT brani usiamo quindi Deezer (stessa API pubblica via
+        // JSONP già usata per le copertine, vedi fetchDeezerResults più sotto) come fonte
+        // primaria: ha un endpoint dedicato ai top brani per artista, con conteggio
+        // libero. La pagina Spotify resta necessaria solo per risalire al NOME esatto
+        // dell'artista (l'id da solo non lo dà) e alla sua foto; i 5 di "Popular" restano
+        // come ripiego finale se Deezer non trova un artista corrispondente.
+        const ARTIST_TOP_TRACKS_COUNT = 10;
+
+        function extractSpotifyArtistName(html) {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            let name = doc.querySelector('meta[property="og:title"]')?.content
+                || doc.querySelector('h1')?.textContent
+                || doc.querySelector('title')?.textContent
+                || null;
+            name = (name || 'Artista').trim();
+            const cover = doc.querySelector('meta[property="og:image"]')?.content || null;
+            return { name, cover, doc };
+        }
+
+        // I 5 brani "Popular" letti dalla pagina Spotify: ripiego finale se Deezer non
+        // trova l'artista. Isolata in una funzione a parte da fetchSpotifyArtistTopTracks
+        // così quest'ultima resta leggibile (prova Deezer, poi eventualmente questo).
+        function parseSpotifyPopularTracks(doc, artistName) {
+            const rows = doc.querySelectorAll('ol li, [role="row"]');
+            const tracks = [];
+            rows.forEach(row => {
+                if (tracks.length >= 5) return; // "Popular" mostra sempre al più 5 brani
+                const headings = row.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
+                if (headings.length === 0) return;
+                let title = headings[0].textContent.trim();
+                // Stesso badge "E" (esplicito) incollato al titolo, vedi fetchSpotifyEmbedPlaylist.
+                title = title.replace(/^E(?=[A-ZÀ-Ý])/, '');
+                if (!title || tracks.some(t => t.title === title)) return;
+                tracks.push({ title, artist: artistName, thumbnail: null });
+            });
+            return tracks;
+        }
+
+        // Top brani di un artista via Deezer: cerca l'artista per nome, poi legge la sua
+        // classifica ufficiale Deezer (ordinata per ascolti, come "Popular" su Spotify).
+        // Bonus rispetto allo scraping Spotify: qui arriva anche la copertina per singolo
+        // brano, quindi il player ha subito l'artwork corretta senza aspettare iTunes.
+        async function fetchDeezerArtistTopTracks(artistName, limit) {
+            try {
+                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}`);
+                const artist = search && Array.isArray(search.data) ? search.data[0] : null;
+                if (!artist) return [];
+                const top = await jsonpRequest(`https://api.deezer.com/artist/${artist.id}/top?limit=${limit}`);
+                const items = (top && Array.isArray(top.data)) ? top.data : [];
+                return items
+                    .filter(t => t && t.title)
+                    .map(t => ({
+                        title: t.title,
+                        artist: (t.artist && t.artist.name) || artistName,
+                        thumbnail: extractDeezerArtwork(t, 'track')
+                    }));
+            } catch (err) {
+                console.warn('Impossibile recuperare i top brani Deezer:', err);
+                return [];
+            }
+        }
+
+        async function fetchSpotifyArtistTopTracks(artistId, forceRefresh = false) {
+            const html = await fetchViaCorsProxy(`https://open.spotify.com/artist/${artistId}`, 10000, forceRefresh);
+            const { name, cover, doc } = extractSpotifyArtistName(html);
+
+            let tracks = await fetchDeezerArtistTopTracks(name, ARTIST_TOP_TRACKS_COUNT);
+            if (tracks.length === 0) {
+                tracks = parseSpotifyPopularTracks(doc, name); // ripiego: solo 5, senza copertine
+            }
+
+            if (tracks.length === 0) {
+                throw new Error('Nessun brano popolare trovato: né su Deezer né sulla pagina Spotify, oppure Spotify ha cambiato la struttura della pagina.');
+            }
+
+            return { name, cover, tracks };
+        }
+
+        // Nome "pulito" per un artista: a differenza delle playlist non serve scartare
+        // "by Autore" (non esiste), solo la dicitura "Spotify" e il limite a 3 parole
+        // richiesto ovunque nell'app.
+        function cleanSpotifyArtistName(name) {
+            let cleaned = (name || '').trim();
+            cleaned = cleaned.replace(/\bspotify\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
+            return cleaned || 'Artista';
+        }
+
         // Nome "pulito" della playlist: le pagine Spotify aggiungono spesso, dopo il nome
         // vero, un riferimento all'autore/creatore (es. "Nome - playlist by Autore",
         // "Nome - Autore", "Nome by Autore") e la dicitura "Spotify". Li scartiamo
@@ -6453,9 +6566,15 @@
             return withArt[Math.floor(Math.random() * withArt.length)].thumbnail;
         }
 
+        // Punto d'ingresso unico per l'import da link Spotify: capisce da solo se si tratta
+        // di una playlist "pronta" (import esatto, ordine e brani esattamente quelli della
+        // playlist) o di un link artista generico (fallback: importa i suoi "Popular", i
+        // 5 brani più ascoltati). Tutta la pipeline sotto (cache, Recenti, refresh,
+        // risoluzione in background) è condivisa e resta identica per entrambi i casi.
         async function importSpotifyPlaylist(url, forceRefresh = false) {
             const resultsStatusText = document.getElementById('resultsStatusText');
-            const playlistId = extractSpotifyPlaylistId(url);
+            const isArtist = isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
+            const playlistId = isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url);
 
             if (!playlistId) {
                 showResultsView('Risultati');
@@ -6463,7 +6582,7 @@
                 document.getElementById('trackList').innerHTML = '';
                 if (resultsStatusText) {
                     resultsStatusText.classList.remove('hidden');
-                    resultsStatusText.innerText = 'Link playlist Spotify non valido.';
+                    resultsStatusText.innerText = 'Link Spotify non valido.';
                 }
                 return;
             }
@@ -6511,7 +6630,9 @@
             if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
             try {
-                const scraped = await fetchSpotifyEmbedPlaylist(playlistId, forceRefresh);
+                const scraped = isArtist
+                    ? await fetchSpotifyArtistTopTracks(playlistId, forceRefresh)
+                    : await fetchSpotifyEmbedPlaylist(playlistId, forceRefresh);
                 const rawTracks = scraped.tracks;
                 const meta = { name: scraped.name, cover: scraped.cover };
 
@@ -6536,7 +6657,7 @@
                 });
                 appState.currentIndex = -1;
 
-                const cleanName = cleanSpotifyPlaylistName(meta.name);
+                const cleanName = isArtist ? cleanSpotifyArtistName(meta.name) : cleanSpotifyPlaylistName(meta.name);
                 currentLoadedKey = 'playlist:' + url;
                 currentLoadedTitle = cleanName;
                 // Stessa riallineamento del ramo cache qui sopra: se il brano in ascolto ora
@@ -6564,7 +6685,7 @@
                 // (playlist mai vista prima), si torna alla cover originale della
                 // playlist piuttosto che lasciare il cerchio vuoto.
                 const playlistArtwork = isSpotifyMosaicCover(meta.cover) ? (pickRandomPlaylistArtwork(appState.tracks) || meta.cover) : meta.cover;
-                const recentName = formatRecentPlaylistName(meta.name);
+                const recentName = isArtist ? cleanSpotifyArtistName(meta.name) : formatRecentPlaylistName(meta.name);
                 addRecentItem({ name: recentName, type: 'playlist', url, artwork: playlistArtwork });
                 addRecentPlaylist({ name: recentName, url, artwork: playlistArtwork });
                 // Salva l'intero elenco (con gli id già risolti) per la prossima apertura:

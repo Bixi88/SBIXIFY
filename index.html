@@ -4350,6 +4350,76 @@
             }
         }
 
+        // ================= Inerzia "giradischi" nello stop/start del vinile =================
+        // Un vero piatto non parte/si ferma di scatto: ha un'inerzia fisica che lo fa
+        // accelerare/decelerare in una breve rampa invece di passare istantaneamente da
+        // fermo a velocità piena (o viceversa). Qui simuliamo lo stesso effetto pilotando
+        // manualmente l'angolo via requestAnimationFrame per la sola durata della rampa,
+        // per poi riagganciare il disco all'animazione CSS di regime (o fermarlo del
+        // tutto) una volta raggiunta la velocità finale - stesso trucco del
+        // "animation-delay negativo" già usato in endVinylScrub per un aggancio senza scatti.
+        const VINYL_INERTIA_MS = 700; // durata della rampa di accelerazione/decelerazione
+        const VINYL_FULL_SPEED_DEG_PER_MS = 360 / (VINYL_SPIN_DURATION_S * 1000); // velocità di regime
+
+        let vinylInertiaRafId = null;
+        let vinylInertiaToken = 0; // invalida rampe precedenti se ne parte una nuova prima che finiscano
+
+        function cancelVinylInertia() {
+            if (vinylInertiaRafId !== null) {
+                cancelAnimationFrame(vinylInertiaRafId);
+                vinylInertiaRafId = null;
+            }
+            vinylInertiaToken++;
+        }
+
+        // easeOutQuad per la frenata (perde velocità più rapidamente all'inizio, come un
+        // piatto frenato dall'attrito), easeInQuad per la ripartenza (guadagna velocità
+        // più rapidamente verso la fine, come un motore che prende giri).
+        function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+        function easeInQuad(t) { return t * t; }
+
+        function animateVinylInertia(startPlaying) {
+            if (!sheetArtworkImgEl || vinylScrubActive) return; // niente rampa se l'utente ha il dito sul disco
+
+            cancelVinylInertia();
+            const myToken = vinylInertiaToken;
+
+            const baseAngle = getCurrentVinylVisualAngleDeg();
+            sheetArtworkImgEl.classList.remove('vinyl-rotate', 'vinyl-paused');
+            sheetArtworkImgEl.style.transition = 'none';
+            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${baseAngle}deg)`;
+
+            const totalRampDeg = VINYL_FULL_SPEED_DEG_PER_MS * VINYL_INERTIA_MS;
+            const startTime = performance.now();
+
+            function frame(now) {
+                if (myToken !== vinylInertiaToken) return; // superata da una rampa più recente
+
+                const t = Math.min(1, (now - startTime) / VINYL_INERTIA_MS);
+                const eased = startPlaying ? easeInQuad(t) : easeOutQuad(t);
+                const visualAngle = baseAngle + eased * totalRampDeg;
+                sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${visualAngle}deg)`;
+
+                if (t < 1) {
+                    vinylInertiaRafId = requestAnimationFrame(frame);
+                    return;
+                }
+
+                // Rampa conclusa: riaggancia il disco all'animazione CSS ripartendo
+                // dall'angolo visivo raggiunto (stesso animation-delay negativo di
+                // endVinylScrub), sia che si stia fermando (resta lì, in pausa) sia che
+                // abbia raggiunto la velocità di regime (continua a girare da lì).
+                vinylInertiaRafId = null;
+                const finalAngle = ((visualAngle % 360) + 360) % 360;
+                const offsetSeconds = (finalAngle / 360) * VINYL_SPIN_DURATION_S;
+                sheetArtworkImgEl.style.animationDelay = `-${offsetSeconds}s`;
+                sheetArtworkImgEl.style.transform = '';
+                sheetArtworkImgEl.classList.add('vinyl-rotate');
+                sheetArtworkImgEl.classList.toggle('vinyl-paused', !startPlaying);
+            }
+            vinylInertiaRafId = requestAnimationFrame(frame);
+        }
+
         function setupVinylScrub() {
             if (!sheetArtworkImgEl) return;
             let dragging = false;
@@ -7476,15 +7546,27 @@
                                            // "PLAYING" dopo un semplice buffering da scrubbing/seek
 
         function setPlayIconState(isPlaying) {
+            // Distinzione fondamentale per la rampa d'inerzia qui sotto: un cambio VERO
+            // (play->pausa o viceversa, l'utente ha davvero toccato qualcosa) merita
+            // l'animazione di accelerazione/decelerazione; una semplice risincronizzazione
+            // dell'icona a stato invariato (es. si riapre la sheet mentre il brano è già
+            // fermo da tempo) no - altrimenti il disco "frenerebbe" di nuovo ogni volta
+            // che questa funzione viene richiamata senza un reale cambio di stato.
+            const isRealChange = lastKnownPlayingState !== isPlaying;
+
             // La rotazione vinile va aggiornata anche se lo stato "logico" (icona) non è
             // cambiato, quindi vive FUORI dal return anticipato qui sotto: altrimenti,
             // ad es. aprendo la sheet mentre il brano è già in pausa, il disco resterebbe
             // fermo nella posizione sbagliata finché non arriva un vero cambio di stato.
-            if (sheetArtworkImgEl?.classList.contains('vinyl-rotate')) {
-                sheetArtworkImgEl.classList.toggle('vinyl-paused', !isPlaying);
+            if (appState.vinylRotationEnabled && !document.documentElement.classList.contains('immersive')) {
+                if (isRealChange) {
+                    animateVinylInertia(isPlaying); // vero stop/start: rampa con inerzia
+                } else if (sheetArtworkImgEl?.classList.contains('vinyl-rotate')) {
+                    sheetArtworkImgEl.classList.toggle('vinyl-paused', !isPlaying); // solo risincronizzo, istantaneo
+                }
             }
 
-            if (lastKnownPlayingState === isPlaying) return; // stato invariato: nessuna animazione
+            if (!isRealChange) return; // stato invariato: nessuna animazione delle icone
             lastKnownPlayingState = isPlaying;
 
             const targets = [

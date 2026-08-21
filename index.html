@@ -945,7 +945,7 @@
            sempre nascosto, quindi larghezza asimmetrica rispetto al pulsante impostazioni
            a sinistra se centrato "a occhio" col solo flexbox). pointer-events:none perché
            non deve intercettare i tap destinati ai due pulsanti sotto/accanto. */
-        .app-title { font-size:20px; font-weight:700; letter-spacing:-0.01em; text-align:center; margin:0; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); white-space:nowrap; pointer-events:none; }
+        .app-title { font-size:23px; font-weight:700; letter-spacing:-0.01em; text-align:center; margin:0; position:absolute; left:50%; top:50%; transform:translate(-50%, calc(-50% + 4px)); white-space:nowrap; pointer-events:none; }
         .update-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); color:var(--text-main); flex:0 0 auto; margin-left:auto; }
         .update-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--accent); border:1px solid var(--bg-main); }
 

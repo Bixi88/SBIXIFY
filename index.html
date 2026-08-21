@@ -6439,9 +6439,32 @@
         // un endpoint dedicato ai top brani per artista con conteggio libero.
         const ARTIST_TOP_TRACKS_COUNT = 10;
 
+        // Nome e copertina via oEmbed ufficiale di Spotify (endpoint documentato,
+        // pensato apposta per dare titolo/copertina corretti a chi incorpora un link,
+        // usato ad es. da WordPress per generare le anteprime): molto più affidabile dei
+        // meta tag della pagina embed, che su alcuni artisti risultano assenti o
+        // generici (verificato in produzione: un nome mancante finiva col far cercare
+        // "Artista" su Deezer, agganciando un artista a caso per somiglianza testuale).
+        // Ritorna name:null se non disponibile, MAI un placeholder generico, cosicché chi
+        // chiama sappia distinguere "non trovato" da "trovato ma vuoto".
+        async function fetchSpotifyOEmbed(url, forceRefresh = false) {
+            try {
+                const json = await fetchViaCorsProxy(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`, 8000, forceRefresh);
+                const data = JSON.parse(json);
+                const name = (data.title || '').trim() || null;
+                const cover = data.thumbnail_url || null;
+                return { name, cover };
+            } catch (err) {
+                console.warn('oEmbed Spotify non disponibile:', err);
+                return { name: null, cover: null };
+            }
+        }
+
         // Nome, copertina e tracklist "Popular" dalla pagina embed artista. Stessa logica
         // di fetchSpotifyEmbedPlaylist (righe con titolo+artista come heading), qui senza
-        // limite: prendiamo tutte le righe utili trovate nell'HTML iniziale.
+        // limite: prendiamo tutte le righe utili trovate nell'HTML iniziale. Il nome letto
+        // qui (dai meta tag) è solo un ripiego rispetto a fetchSpotifyOEmbed: se assente,
+        // ritorna null, mai un placeholder (stesso motivo di fetchSpotifyOEmbed sopra).
         async function fetchSpotifyEmbedArtist(artistId, forceRefresh = false) {
             const html = await fetchViaCorsProxy(`https://open.spotify.com/embed/artist/${artistId}`, 10000, forceRefresh);
             const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -6450,7 +6473,7 @@
                 || doc.querySelector('h1')?.textContent
                 || doc.querySelector('title')?.textContent
                 || null;
-            name = (name || 'Artista').trim();
+            name = (name || '').trim() || null;
             const cover = doc.querySelector('meta[property="og:image"]')?.content || null;
 
             const rows = doc.querySelectorAll('ol li, [role="row"]');
@@ -6461,9 +6484,12 @@
                 let title = headings[0].textContent.trim();
                 // Stesso badge "E" (esplicito) incollato al titolo, vedi fetchSpotifyEmbedPlaylist.
                 title = title.replace(/^E(?=[A-ZÀ-Ý])/, '');
-                let artist = headings.length > 1 ? headings[1].textContent.trim().replace(/^E(?=[A-ZÀ-Ý])/, '') : name;
+                // L'artista di riga (headings[1]) è comunque affidabile anche se il nome
+                // dell'artista "principale" della pagina non lo è: viene letto brano per
+                // brano dalla stessa lista, non da un meta tag isolato.
+                let artist = headings.length > 1 ? headings[1].textContent.trim().replace(/^E(?=[A-ZÀ-Ý])/, '') : (name || '');
                 if (!title || tracks.some(t => t.title === title)) return;
-                tracks.push({ title, artist: artist || name, thumbnail: null });
+                tracks.push({ title, artist: artist || name || 'Artista', thumbnail: null });
             });
 
             return { name, cover, tracks };
@@ -6494,13 +6520,22 @@
         }
 
         async function fetchSpotifyArtistTopTracks(artistId, forceRefresh = false) {
-            const embed = await fetchSpotifyEmbedArtist(artistId, forceRefresh);
-            const { name, cover } = embed;
+            const originalUrl = `https://open.spotify.com/artist/${artistId}`;
+            const [oembed, embed] = await Promise.all([
+                fetchSpotifyOEmbed(originalUrl, forceRefresh),
+                fetchSpotifyEmbedArtist(artistId, forceRefresh)
+            ]);
+            // Nome: oEmbed (fonte ufficiale) prima, poi quello letto dall'HTML embed;
+            // nessuno dei due usa mai un placeholder generico (vedi sopra), quindi se
+            // entrambi falliscono restiamo con null e NON interroghiamo Deezer alla
+            // cieca - meglio zero risultati da lì che un artista sbagliato.
+            const name = oembed.name || embed.name;
+            const cover = oembed.cover || embed.cover;
 
             // Deezer come fonte primaria (arriva già con copertina per brano e conteggio
             // libero); se non trova l'artista o dà zero risultati, usiamo direttamente
             // quanto letto dall'embed Spotify (di solito 5, a volte già 10).
-            let tracks = await fetchDeezerArtistTopTracks(name, ARTIST_TOP_TRACKS_COUNT);
+            let tracks = name ? await fetchDeezerArtistTopTracks(name, ARTIST_TOP_TRACKS_COUNT) : [];
             if (tracks.length === 0) {
                 tracks = embed.tracks; // ripiego: quanto letto dall'embed Spotify (di solito 5)
             }
@@ -6509,7 +6544,7 @@
                 throw new Error('Nessun brano popolare trovato: né su Deezer né sulla pagina embed Spotify, oppure Spotify ha cambiato la struttura della pagina.');
             }
 
-            return { name, cover, tracks };
+            return { name: name || 'Artista', cover, tracks };
         }
 
         // Nome "pulito" per un artista: a differenza delle playlist non serve scartare

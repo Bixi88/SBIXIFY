@@ -6505,6 +6505,22 @@
             return { name, cover, tracks };
         }
 
+        // Confronto "robusto" fra due nomi artista: minuscolo, senza accenti, senza
+        // spazi/punteggiatura. Usato per validare i risultati di ricerca Deezer (vedi
+        // sotto): la ricerca testuale di Deezer è "fuzzy" e per artisti poco conosciuti
+        // può agganciare un omonimo famoso invece dell'artista giusto (caso verificato:
+        // "Florinda", cantante di nicchia, restituiva i brani di "Flo Rida" perché più
+        // popolare e testualmente simile). Un confronto esatto dopo normalizzazione
+        // scarta questi falsi positivi, al costo di perdere qualche match legittimo con
+        // punteggiatura molto diversa (es. "Ke$ha" / "Kesha") - meglio un fallback in più
+        // che un artista sbagliato.
+        function normalizeArtistName(name) {
+            return (name || '')
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '');
+        }
+
         // Top brani di un artista via Deezer: cerca l'artista per nome, poi legge la sua
         // classifica ufficiale Deezer (ordinata per ascolti, come "Popular" su Spotify).
         // Bonus rispetto allo scraping Spotify: qui arriva anche la copertina per singolo
@@ -6514,6 +6530,10 @@
                 const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}`);
                 const artist = search && Array.isArray(search.data) ? search.data[0] : null;
                 if (!artist) return [];
+                if (normalizeArtistName(artist.name) !== normalizeArtistName(artistName)) {
+                    console.warn(`Deezer ha proposto "${artist.name}" per "${artistName}": scartato, non è un match esatto.`);
+                    return [];
+                }
                 const top = await jsonpRequest(`https://api.deezer.com/artist/${artist.id}/top?limit=${limit}`);
                 const items = (top && Array.isArray(top.data)) ? top.data : [];
                 return items

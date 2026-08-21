@@ -249,9 +249,13 @@
            overflow-y:auto, vengono promossi a un layer di compositing proprio che a
            volte ignora l'ordine di stacking reale rispetto a #nowPlayingSheet (fixed,
            z-index:100) e restano visibili "sopra" la sheet aperta. Nascosti esplicitamente
-           in quel momento con :has(), senza toccare il JS. */
-        body:has(#nowPlayingSheet.expanded) .home-header,
-        body:has(#nowPlayingSheet.expanded) .results-header {
+           in quel momento con :has(), senza toccare il JS.
+           IMPORTANTE: copre sia .expanded (sheet already aperta) sia .sheet-dragging
+           (sheet in trascinamento verso l'apertura, PRIMA che .expanded venga aggiunta
+           al rilascio) - senza .sheet-dragging qui, per tutta la durata dello swipe di
+           apertura l'header/carosello restava scoperto e "bucava" sopra la sheet. */
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .home-header,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .results-header {
             visibility: hidden;
         }
 
@@ -4730,6 +4734,12 @@
                     // Parte sempre dalla posizione reale attuale (miniDragBasePercent), non da 0
                     // per forza, così resta continuo anche se si ritocca subito dopo un rilascio.
                     sheetWasMoved = true;
+                    // Classe usata dal CSS (vedi regola :has() sopra #nowPlayingSheet) per
+                    // nascondere l'header sticky della home durante TUTTO il trascinamento,
+                    // non solo a sheet già aperta (.expanded, aggiunta solo al rilascio) -
+                    // altrimenti per l'intera durata dello swipe l'header/carosello della
+                    // home resta scoperto e su alcune WebView "buca" sopra la sheet.
+                    nowPlayingSheet.classList.add('sheet-dragging');
                     const dragPercent = (Math.abs(miniCurrentY) / OPEN_DRAG_DISTANCE) * 100;
                     const nextPercent = Math.max(-100, miniDragBasePercent - dragPercent);
                     nowPlayingSheet.style.transition = 'none';
@@ -4741,6 +4751,7 @@
                 // asincrono, un nuovo tocco arrivato subito dopo potrebbe "vincere" la corsa e poi
                 // essere comunque sovrascritto da questo frame in ritardo, facendo scattare la sheet
                 // di colpo e dando l'impressione di dover aspettare la fine dell'animazione.
+                nowPlayingSheet.classList.remove('sheet-dragging'); // il trascinamento è concluso: se apre, subentra .expanded; se richiude, non serve più nessuna delle due
                 nowPlayingSheet.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
                 if (shouldOpen) {
                     nowPlayingSheet.classList.add('expanded');

@@ -253,9 +253,17 @@
            IMPORTANTE: copre sia .expanded (sheet already aperta) sia .sheet-dragging
            (sheet in trascinamento verso l'apertura, PRIMA che .expanded venga aggiunta
            al rilascio) - senza .sheet-dragging qui, per tutta la durata dello swipe di
-           apertura l'header/carosello restava scoperto e "bucava" sopra la sheet. */
+           apertura l'header/carosello restava scoperto e "bucava" sopra la sheet.
+           Il carosello playlist (#recentGrid, subito sotto l'header) e la sua etichetta
+           "Playlist" (.quick-eyebrow adiacente) risultano soggetti allo STESSO bug di
+           compositing pur non essendo "sticky" loro stessi: probabile "layer squashing"
+           di Chromium che promuove anche gli elementi immediatamente adiacenti a quello
+           sticky - confermato visivamente (screenshot durante lo swipe), quindi vanno
+           nascosti insieme, non solo l'header. */
         body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .home-header,
-        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .results-header {
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .results-header,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .home-header + .quick-eyebrow,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) #recentGrid {
             visibility: hidden;
         }
 

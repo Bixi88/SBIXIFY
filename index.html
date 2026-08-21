@@ -248,22 +248,30 @@
            .results-header, essendo "position: sticky" dentro un contenitore con
            overflow-y:auto, vengono promossi a un layer di compositing proprio che a
            volte ignora l'ordine di stacking reale rispetto a #nowPlayingSheet (fixed,
-           z-index:100) e restano visibili "sopra" la sheet aperta. Nascosti esplicitamente
-           in quel momento con :has(), senza toccare il JS.
-           IMPORTANTE: copre sia .expanded (sheet already aperta) sia .sheet-dragging
-           (sheet in trascinamento verso l'apertura, PRIMA che .expanded venga aggiunta
-           al rilascio) - senza .sheet-dragging qui, per tutta la durata dello swipe di
-           apertura l'header/carosello restava scoperto e "bucava" sopra la sheet.
+           z-index:100) e restano visibili "sopra" la sheet aperta/in trascinamento.
+           Nascosti esplicitamente con :has(), senza toccare il JS che li disegna.
+           IMPORTANTE (revisione 2): NON usiamo più .sheet-dragging (aggiunta al primo
+           pixel di trascinamento) perché nascondeva l'intera home fin dall'inizio dello
+           swipe, ben prima che la sheet la coprisse davvero - sembrava che la pagina
+           sparisse di colpo invece di restare visibile e sparire "sotto" la sheet che
+           sale. Al suo posto usiamo .sheet-covering: il JS (vedi moveMiniDrag) la
+           aggiunge SOLO quando il bordo superiore della sheet ha già fisicamente
+           superato la parte bassa di questi elementi (calcolato da getBoundingClientRect),
+           cioè quando sarebbero comunque già coperti dallo sfondo opaco della sheet.
+           Così per la maggior parte dello swipe la home resta intatta e viene coperta in
+           modo naturale dalla sheet che sale; solo nell'ultimissimo tratto del gesto,
+           quando ormai è già (quasi) tutta coperta, subentra questa classe a blindare
+           il bug di compositing, senza che si veda alcuna differenza.
            Il carosello playlist (#recentGrid, subito sotto l'header) e la sua etichetta
            "Playlist" (.quick-eyebrow adiacente) risultano soggetti allo STESSO bug di
            compositing pur non essendo "sticky" loro stessi: probabile "layer squashing"
            di Chromium che promuove anche gli elementi immediatamente adiacenti a quello
            sticky - confermato visivamente (screenshot durante lo swipe), quindi vanno
            nascosti insieme, non solo l'header. */
-        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .home-header,
-        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .results-header,
-        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) .home-header + .quick-eyebrow,
-        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-dragging) #recentGrid {
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-covering) .home-header,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-covering) .results-header,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-covering) .home-header + .quick-eyebrow,
+        body:has(#nowPlayingSheet.expanded, #nowPlayingSheet.sheet-covering) #recentGrid {
             visibility: hidden;
         }
 
@@ -4694,6 +4702,34 @@
             // si muove a scatti invece di seguire il dito in modo fluido durante lo swipe in alto.
             let dragDirection = null;
             const DIRECTION_LOCK_THRESHOLD = 8; // px minimi di movimento prima di fissare la direzione
+            // Soglia (in % di translateY, negativa) oltre la quale il bordo superiore della
+            // sheet ha GIA' fisicamente superato la parte bassa di header/carosello della vista
+            // corrente: solo da quel punto in poi ha senso applicare la classe .sheet-covering
+            // (vedi CSS su #nowPlayingSheet più sopra), perché prima di allora quegli elementi
+            // sono ancora scoperti e devono restare visibili normalmente. Calcolata all'inizio
+            // di ogni trascinamento (le posizioni non cambiano durante il gesto stesso).
+            let sheetCoverThresholdPercent = -85; // valore prudente di fallback
+            const computeCoverThreshold = () => {
+                const slider = document.getElementById('viewsSlider');
+                const showingResults = slider && slider.classList.contains('showing-results');
+                let refEl;
+                if (showingResults) {
+                    refEl = document.getElementById('resultsHeader');
+                } else {
+                    const grid = document.getElementById('recentGrid');
+                    refEl = (grid && !grid.classList.contains('hidden')) ? grid : document.getElementById('homeHeader');
+                }
+                const vh = window.innerHeight || 1;
+                if (!refEl) return -85;
+                const bottomY = refEl.getBoundingClientRect().bottom;
+                // Percento di translateY oltre il quale il bordo superiore della sheet
+                // (che parte da top:100% e sale) ha superato bottomY, cioè l'area è già
+                // fisicamente coperta dallo sfondo opaco della sheet.
+                const percent = (bottomY / vh - 1) * 100;
+                // Mai troppo presto: un margine di sicurezza evita che, su misurazioni
+                // imprecise, la classe scatti mentre l'area è ancora visibile.
+                return Math.min(-60, percent);
+            };
             const startMiniDrag = (x, y, target) => {
                 if (target.closest('#miniPlayerControls') || target.closest('#miniProgressBarArea')) return;
                 isDraggingMini = true;
@@ -4702,6 +4738,7 @@
                 miniPlayerWasDragged = false;
                 sheetWasMoved = false;
                 dragDirection = null;
+                sheetCoverThresholdPercent = computeCoverThreshold();
                 // Riparte sempre dalla posizione reale della sheet, non da "chiusa" per forza:
                 // così il gesto resta sotto controllo anche subito dopo un'altra animazione.
                 miniDragBasePercent = getSheetCurrentPercentY();
@@ -4742,14 +4779,20 @@
                     // Parte sempre dalla posizione reale attuale (miniDragBasePercent), non da 0
                     // per forza, così resta continuo anche se si ritocca subito dopo un rilascio.
                     sheetWasMoved = true;
-                    // Classe usata dal CSS (vedi regola :has() sopra #nowPlayingSheet) per
-                    // nascondere l'header sticky della home durante TUTTO il trascinamento,
-                    // non solo a sheet già aperta (.expanded, aggiunta solo al rilascio) -
-                    // altrimenti per l'intera durata dello swipe l'header/carosello della
-                    // home resta scoperto e su alcune WebView "buca" sopra la sheet.
-                    nowPlayingSheet.classList.add('sheet-dragging');
                     const dragPercent = (Math.abs(miniCurrentY) / OPEN_DRAG_DISTANCE) * 100;
                     const nextPercent = Math.max(-100, miniDragBasePercent - dragPercent);
+                    // Classe usata dal CSS (vedi regola :has() sopra #nowPlayingSheet) per
+                    // blindare il bug di compositing di header/carosello - va aggiunta SOLO
+                    // quando la sheet li ha già fisicamente superati (vedi
+                    // computeCoverThreshold), non dal primo pixel di trascinamento: così la
+                    // home resta visibile e viene coperta man mano dalla sheet che sale,
+                    // invece di sparire di colpo appena si inizia lo swipe. È reversibile
+                    // (si toglie di nuovo se il dito torna indietro sotto la soglia).
+                    if (nextPercent <= sheetCoverThresholdPercent) {
+                        nowPlayingSheet.classList.add('sheet-covering');
+                    } else {
+                        nowPlayingSheet.classList.remove('sheet-covering');
+                    }
                     nowPlayingSheet.style.transition = 'none';
                     nowPlayingSheet.style.transform = `translate3d(0, ${nextPercent}%, 0)`;
                 }
@@ -4759,7 +4802,7 @@
                 // asincrono, un nuovo tocco arrivato subito dopo potrebbe "vincere" la corsa e poi
                 // essere comunque sovrascritto da questo frame in ritardo, facendo scattare la sheet
                 // di colpo e dando l'impressione di dover aspettare la fine dell'animazione.
-                nowPlayingSheet.classList.remove('sheet-dragging'); // il trascinamento è concluso: se apre, subentra .expanded; se richiude, non serve più nessuna delle due
+                nowPlayingSheet.classList.remove('sheet-covering'); // il trascinamento è concluso: se apre, subentra .expanded; se richiude, non serve più nessuna delle due
                 nowPlayingSheet.style.transition = 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
                 if (shouldOpen) {
                     nowPlayingSheet.classList.add('expanded');

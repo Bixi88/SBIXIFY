@@ -106,7 +106,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Archivo+Black&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Solo skin Immersive: General Sans (Fontshare, licenza libera anche commerciale),
          il sostituto free più vicino a "Circular" (font proprietario di Spotify, usato
          nella reference fornita dall'utente) - molto più vicino di Poppins (scartato: qui
@@ -156,8 +156,8 @@
             background: transparent;
         }
 
-        body { font-family: 'Archivo Black', sans-serif; }
-        .display { font-family: 'Archivo Black', sans-serif; }
+        body { font-family: 'Inter', sans-serif; }
+        .display { font-family: 'Inter', sans-serif; }
 
         /* --- SLIDER TRA VISTA PLAYLIST E VISTA LISTA CANZONI --- */
         #viewsSlider {
@@ -912,13 +912,13 @@
            sempre nascosto, quindi larghezza asimmetrica rispetto al pulsante impostazioni
            a sinistra se centrato "a occhio" col solo flexbox). pointer-events:none perché
            non deve intercettare i tap destinati ai due pulsanti sotto/accanto. */
-        .app-title { font-size:27px; font-weight:400; letter-spacing:-0.01em; text-align:center; margin:0; position:absolute; left:50%; top:50%; transform:translate(-50%, calc(-50% + 4px)); white-space:nowrap; pointer-events:none; }
+        .app-title { font-size:23px; font-weight:700; letter-spacing:-0.01em; text-align:center; margin:0; position:absolute; left:50%; top:50%; transform:translate(-50%, calc(-50% + 4px)); white-space:nowrap; pointer-events:none; }
         .update-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); color:var(--text-main); flex:0 0 auto; margin-left:auto; }
         .update-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--accent); border:1px solid var(--bg-main); }
 
         .search-pill { margin-top:12px; background:var(--text-main); border-radius:999px; display:flex; align-items:center; gap:10px; padding:10px 14px; position:relative; }
         .search-pill .mag-btn { color:#4a4550; font-size:15px; flex:0 0 auto; background:none; border:none; padding:2px; display:flex; -webkit-text-stroke: 0.5px currentColor; text-stroke: 0.5px currentColor; }
-        #searchInput { flex:1; border:none !important; outline:none !important; background:transparent !important; font-family:'Archivo Black', sans-serif; font-size:13.5px !important; font-weight:500; color:#1c1a20 !important; width:auto !important; opacity:1 !important; padding:0 !important; height:auto !important; -webkit-appearance:none; appearance:none; }
+        #searchInput { flex:1; border:none !important; outline:none !important; background:transparent !important; font-family:'Inter',sans-serif; font-size:13.5px !important; font-weight:500; color:#1c1a20 !important; width:auto !important; opacity:1 !important; padding:0 !important; height:auto !important; -webkit-appearance:none; appearance:none; }
         #searchInput::-webkit-search-decoration,
         #searchInput::-webkit-search-cancel-button,
         #searchInput::-webkit-search-results-button,
@@ -962,7 +962,7 @@
         /* ================= HOME: griglia "Playlist" (fissa, 3 colonne) + colonna "Canzoni" ================= */
         /* Stessa dimensione/peso/uppercase del titolo playlist nell'header risultati
            (.results-header .rt) così le due schermate restano coerenti fra loro. */
-        .quick-eyebrow { padding:22px 24px 4px; font-size:23px; letter-spacing:.01em; text-transform:uppercase; color:#fff; font-weight:400; font-family:'Archivo Black', sans-serif; transform: translateZ(0); }
+        .quick-eyebrow { padding:22px 24px 4px; font-size:16px; letter-spacing:.02em; text-transform:uppercase; color:var(--text-muted); font-weight:700; transform: translateZ(0); }
         /* La prima label ("Playlist", subito dopo l'header) cade dentro la sfumatura di
            56px di .home-header::after qui sopra e risultava un po' sfocata/lavata appena
            aperta la home. Un po' più di spazio sopra SOLO per lei (non per "Canzoni" più
@@ -970,7 +970,7 @@
            margin negativo altrove, spinge naturalmente in basso anche tutto quello che
            segue nel flusso (griglia playlist, canzoni), niente altro da ritoccare. */
         .home-header + .quick-eyebrow { padding-top: 34px; }
-        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 12px; justify-items:center; transform: translateZ(0); }
+        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 20px; justify-items:center; transform: translateZ(0); }
         .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }
@@ -1177,7 +1177,7 @@
         html.immersive,
         html.immersive .display,
         html.immersive #searchInput {
-            font-family: 'Archivo Black', sans-serif;
+            font-family: 'General Sans', 'Inter', sans-serif;
         }
         html.immersive #playerTrackTitle { font-weight: 700; letter-spacing: -0.01em; }
 

@@ -3,16 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // Applicata SUBITO (prima di qualsiasi CSS/paint) per evitare il flash del tema
-        // sbagliato all'apertura: stessa logica dello sfondo critico qui sotto.
-        try {
-            var savedTheme = localStorage.getItem('sbixify_theme');
-            // Il tema Amoled è stato rimosso: chi lo aveva impostato torna a "Moderna".
-            if (savedTheme === 'amoled') savedTheme = 'moderna';
-            if (savedTheme === 'walkman' || savedTheme === 'immersive') {
-                document.documentElement.classList.add(savedTheme);
-            }
-        } catch (e) {}
+        // Immersive è l'unica skin dell'app (Moderna e Walkman sono state rimosse): la
+        // classe va applicata SUBITO (prima di qualsiasi CSS/paint), non solo quando
+        // l'utente l'aveva scelta in passato, altrimenti il primo frame verrebbe
+        // disegnato con lo sfondo di base invece di quello dinamico di Immersive.
+        document.documentElement.classList.add('immersive');
     </script>
     <meta name="color-scheme" content="dark">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -98,27 +93,12 @@
     <link rel="icon" href="192x192.png" type="image/png">
     <link rel="apple-touch-icon" href="192x192.png">
     
-    <!-- Meta Theme Color multipli per Firefox ed Android -->
-    <meta name="theme-color" content="#000000" id="metaThemeColor">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" id="metaThemeColorDark">
-    <script>
-        // Stesso principio dello sfondo/tema "critico" qui sopra: se all'apertura è già salvato
-        // walkman (sfondo nero puro, non il viola/blu di "Moderna"), allinea SUBITO anche
-        // il colore della barra di stato di sistema, altrimenti resterebbe quello di "Moderna"
-        // finché il resto dello script più in basso non lo corregge (piccolo "flash" di colore).
-        try {
-            if (savedTheme === 'walkman') {
-                document.getElementById('metaThemeColor')?.setAttribute('content', '#000000');
-                document.getElementById('metaThemeColorDark')?.setAttribute('content', '#000000');
-            } else if (savedTheme === 'immersive') {
-                // Colore d'attesa finché non riparte l'ultimo brano e non viene ricalcolato
-                // quello dinamico dalla sua artwork (vedi updateImmersiveColorFromArtwork).
-                document.getElementById('metaThemeColor')?.setAttribute('content', '#0B0B0E');
-                document.getElementById('metaThemeColorDark')?.setAttribute('content', '#0B0B0E');
-            }
-        } catch (e) {}
-    </script>
-    
+    <!-- Meta Theme Color multipli per Firefox ed Android: #0B0B0E è il colore d'attesa di
+         Immersive (unica skin dell'app) finché non riparte l'ultimo brano e non viene
+         ricalcolato quello dinamico dalla sua artwork (vedi updateImmersiveColorFromArtwork). -->
+    <meta name="theme-color" content="#0B0B0E" id="metaThemeColor">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0E" id="metaThemeColorDark">
+
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-menu-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -127,9 +107,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Font usato solo dallo skin "Walkman" (vedi regole html.walkman più sotto): Roboto al posto
-         di Inter, per un look più vicino ai player hi-fi/Android nativi che questo skin imita. -->
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- Solo skin Immersive: General Sans (Fontshare, licenza libera anche commerciale),
          il sostituto free più vicino a "Circular" (font proprietario di Spotify, usato
          nella reference fornita dall'utente) - molto più vicino di Poppins (scartato: qui
@@ -445,16 +422,7 @@
            ingrandita e i bordi finiscono fuori dal cerchio/contenitore, che ha
            overflow:hidden), così i bordi neri spariscono anche sulle copertine che
            li hanno. Valore regolabile da qui: più alto = più zoom/crop. */
-        :root { --artwork-zoom: 1.37; --miniplayer-artwork-zoom: 1;
-            /* Zoom dedicato SOLO alla rotazione "vinile": un'immagine quadrata ingrandita
-               1.37x copre il cerchio da ferma, ma durante la rotazione, agli angoli
-               diagonali (45°/135°/225°/315°), i suoi bordi rientrano rispetto al cerchio
-               (serve almeno sqrt(2) ≈ 1.414x per restare sempre fuori dal cerchio a
-               qualunque angolo). Quel rientro lasciava intravedere per una frazione di
-               grado i bordi scuri/originali dell'immagine oltre la cornice: da qui
-               l'alone "quadrato" visibile durante la rotazione. 1.5x tiene margine. */
-            --artwork-rotate-zoom: 1.5;
-        }
+        :root { --artwork-zoom: 1.37; --miniplayer-artwork-zoom: 1; }
         #sheetArtworkImg,
         .track-thumb-img {
             transform: scale(var(--artwork-zoom));
@@ -838,11 +806,10 @@
         #apiModal.active .settings-sheet {
             transform: translateX(0);
         }
-        /* Tema Moderna (nessuna classe html dedicata, è il default): il menu impostazioni
-           usa .glass-panel come tutti gli altri overlay, quindi di base è semitrasparente/
-           sfocato. Qui lo rendiamo pieno con lo stesso colore solido --bg-main già usato
-           per il bottom sheet del timer, senza toccare Walkman che resta com'era. */
-        html:not(.walkman) #apiModal .settings-sheet {
+        /* Menu impostazioni: usa .glass-panel come tutti gli altri overlay, quindi di
+           base è semitrasparente/sfocato. Qui lo rendiamo pieno con lo stesso colore
+           solido --bg-main già usato per il bottom sheet del timer. */
+        #apiModal .settings-sheet {
             background: var(--bg-main);
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
@@ -1039,12 +1006,9 @@
            (dove prima stava il cancella - vedi commento sopra). Icona bianca a riposo;
            quando la card è pinnata (classe .pinned sul .qcard, persistente in
            localStorage/render, non solo durante lo show-delete) l'icona passa al
-           colore accento della skin attiva - var(--accent) di base, var(--walkman-highlight)
-           per Walkman (dove --accent normale è il grigio chiaro dei pulsanti, non il
-           viola: qui invece vogliamo proprio il viola "highlight", coerente con vinile/
-           testi sincronizzati che già lo usano). Sfondo neutro scuro fisso (non accento)
-           così il colore dell'icona resta l'unico segnale di stato, leggibile su
-           qualunque artwork sotto. */
+           colore accento (var(--accent)). Sfondo neutro scuro fisso (non accento) così
+           il colore dell'icona resta l'unico segnale di stato, leggibile su qualunque
+           artwork sotto. */
         .qcard .qcard-pin {
             position: absolute; top: 4px; right: 6px; width: 24px; height: 24px;
             display: flex; align-items: center; justify-content: center; font-size: 13px;
@@ -1054,7 +1018,6 @@
             z-index: 5;
         }
         .qcard.pinned .qcard-pin { color: var(--accent); }
-        html.walkman .qcard.pinned .qcard-pin { color: var(--walkman-highlight); }
         /* A differenza del cancella (che resta nascosto finché non tieni premuto), il
            pin di una card già pinnata resta SEMPRE visibile, non solo durante il long
            press: è l'indicatore permanente di stato, non solo un'azione. Il cancella
@@ -1063,8 +1026,8 @@
         /* Contorno sottile sul solo glifo (stesso trucco -webkit-text-stroke già usato
            per il logo/mag-btn qui sopra), non un bordo sul pulsante: serve solo a dare
            un po' di peso/leggibilità all'icona ora che non ha più il cerchio dietro.
-           Bianco su Moderna/Walkman, nero su Immersive (dove lo sfondo/artwork tende
-           a schiarire e il bianco si perderebbe). */
+           Bianco di base, nero su Immersive (dove lo sfondo/artwork tende a schiarire
+           e il bianco si perderebbe). */
         .qcard-pin i { -webkit-text-stroke: 0.5px #fff; text-stroke: 0.5px #fff; }
         html.immersive .qcard-pin i { -webkit-text-stroke: 0.5px #000; text-stroke: 0.5px #000; }
         .qcard.show-delete .qcard-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
@@ -1075,19 +1038,20 @@
             25% { transform: rotate(-2deg); }
             75% { transform: rotate(2deg); }
         }
-        /* Cornice grigia per tutte le artwork del tema Moderna (quello di base, senza skin
-           Walkman attiva): bordo su card Recenti, playlist recenti in Impostazioni,
-           miniplayer, now playing e sul CONTENITORE della thumbnail nella lista canzoni,
-           nel grigio di questo tema (--text-muted) invece del bianco/lavanda di Walkman. */
-        html:not(.walkman) .qcard .circle,
-        html:not(.walkman) .settings-playlist-thumb,
-        html:not(.walkman) #miniPlayerImgFrame {
+        /* Cornice grigia di base per tutte le artwork (bordo su card Recenti, playlist
+           recenti in Impostazioni, miniplayer, now playing e sul CONTENITORE della
+           thumbnail nella lista canzoni): resta sotto le regole più specifiche di
+           Immersive (--immersive-frame-contrast) che la sovrascrivono quando l'artwork
+           è già stata analizzata. */
+        .qcard .circle,
+        .settings-playlist-thumb,
+        #miniPlayerImgFrame {
             border: 1.5px solid rgba(139, 135, 148, 0.55);
         }
-        html:not(.walkman) #sheetArtworkFrame {
+        #sheetArtworkFrame {
             border: 4px solid rgba(139, 135, 148, 0.5);
         }
-        html:not(.walkman) .track-thumb-wrap {
+        .track-thumb-wrap {
             background-color: rgba(139, 135, 148, 0.16);
             border: 1.5px solid rgba(139, 135, 148, 0.55);
         }
@@ -1105,158 +1069,7 @@
         .track-row::after { content:''; position:absolute; left:64px; right:0; bottom:0; height:1px; background:rgba(243,239,230,0.08); }
         .track-row:last-child::after { display:none; }
 
-        /* ================= SKIN "WALKMAN" (opzionale, attivabile dalle Impostazioni) =================
-           Ispirata ai lettori musicali hi-fi portatili: nero pieno, un argento freddo al posto
-           del "paper" caldo dell'altra skin, copertine squadrate con un bordo sottile invece
-           del cerchio arrotondato, e i pulsanti di riproduzione diventano "ad anello" (solo
-           bordo, nessun riempimento arancione) come i tasti fisici di un lettore fisico. */
-        html.walkman {
-            --bg-main: #000000;
-            --bg-gradient-top: #000000;
-            --bg-card: #0A0A0A;
-            --bg-input: #111114;
-            --accent: #E8E8EC;
-            --text-main: #F0F0F2;
-            --text-muted: #87878E;
-        }
-        /* Tutte le thumbnail/artwork di questa skin sono cerchi: card "RECENTI" in home,
-           risultati di ricerca, playlist recenti nel menu impostazioni, miniplayer e now playing. */
-        html.walkman .qcard .circle {
-            border-radius: 50% !important;
-            box-shadow: none;
-            /* Uniformata al grigio-lavanda di Moderna (rgba(139,135,148,0.55), vedi regola
-               base "html:not(.walkman) .qcard .circle"), non più il bianco delle altre
-               cornici di questa skin - solo per le card playlist recenti in home, non
-               cliccate (quella "più recente" ha il suo anello a parte, vedi
-               .qcard.latest .circle più sotto). */
-            border: 1.5px solid rgba(139, 135, 148, 0.55);
-        }
-        html.walkman .settings-playlist-thumb {
-            border-radius: 50% !important;
-            box-shadow: none;
-            border: 1.5px solid rgba(255,255,255,0.55);
-        }
-        /* Cornice del mini player leggermente più spessa delle altre thumbnail circolari:
-           essendo più piccolo, un bordo sottile risultava poco percettibile. */
-        html.walkman #miniPlayerImgFrame {
-            border-radius: 50% !important;
-            box-shadow: none;
-            /* Stessa cornice esatta della lista canzoni (.track-thumb-wrap / .qcard .circle):
-               1.5px, rgba(255,255,255,0.55). L'artwork del miniplayer deve essere identica
-               alle altre, nessun trattamento speciale qui. */
-            border: 1.5px solid rgba(255,255,255,0.55);
-        }
-        /* Cornice bianca "a vetro": sul grande artwork della Now Playing sheet è
-           leggermente più spessa, coerente col trattamento delle altre artwork. */
-        html.walkman #sheetArtworkFrame {
-            border-radius: 50% !important;
-            border: 4px solid rgba(255,255,255,0.5);
-        }
-        html.walkman #sheetArtworkShadow { display: none; }
-        /* Il contenitore della thumbnail nella lista canzoni ha un suo squircle (rounded-[24%])
-           che "inquadra" l'immagine: va reso cerchio anche lui, altrimenti resta visibile
-           dietro al cerchio dell'immagine. Bordo spostato sul CONTENITORE (.track-thumb-wrap)
-           anziché sull'<img>, così resta pulito qualunque sia lo stato di caricamento della
-           copertina (fallback grigio scuro coperto dal bordo). */
-        html.walkman .track-thumb-wrap {
-            border-radius: 50% !important;
-            background-color: rgba(240,240,242,0.10);
-            border: 1.5px solid rgba(255,255,255,0.55);
-        }
-        html.walkman .track-thumb-img { border-radius: 50% !important; }
-        /* Cornice ed evidenziazione della card "più recente": stesso viola usato per la
-           barra del minutaggio (--walkman-highlight), non più il bianco/argento di --accent,
-           per restare coerente con l'unico accento colorato di questa skin. */
-        html.walkman .qcard.latest .circle { box-shadow: 0 0 0 2px var(--walkman-highlight); border-color: transparent; }
-        html.walkman .qcard.latest .name { color: var(--walkman-highlight); }
-        html.walkman .track-row::after { background: rgba(240,240,242,0.10); }
-        html.walkman .update-btn,
-        html.walkman .results-header .back-btn,
-        html.walkman .settings-playlist-remove {
-            background: transparent;
-            border: 1px solid rgba(240,240,242,0.2);
-        }
-        /* Pulsante impostazioni: nessun cerchio/bordo (resta "invisibile" come nelle altre
-           skin), e le due barre diventano della stessa lunghezza invece di una più corta. */
-        html.walkman .menu-icon-btn {
-            background: transparent;
-            border: none;
-        }
-        html.walkman .menu-bars span:last-child { width: 100%; }
-        html.walkman .search-pill {
-            background: #0A0A0A;
-            border: 1px solid rgba(240,240,242,0.22);
-        }
-        html.walkman .search-pill #searchInput { color: var(--text-main) !important; }
-        html.walkman .search-pill #searchInput::placeholder { color: var(--text-muted); }
-        html.walkman .search-pill .mag-btn { color: var(--text-main) !important; }
-        html.walkman .glass-panel,
-        html.walkman .settings-sheet {
-            border: 1px solid rgba(240,240,242,0.14);
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
-        }
-        /* Cornice del contenitore "a pillola" del mini player un po' più spessa e più
-           chiara (opacità alzata da 0.14 a 0.35) delle altre superfici .glass-panel
-           (menu impostazioni, toast), che restano invariate: qui, isolato da loro, il
-           pannello risulta più definito contro lo sfondo nero pieno di questo tema. */
-        html.walkman #miniPlayer {
-            border-width: 2px;
-            border-color: rgba(240,240,242,0.35);
-        }
-        /* Pulsanti play/pausa: anello vuoto invece del cerchio arancione pieno */
-        html.walkman #playPauseBtn,
-        html.walkman #miniPlayPauseBtn {
-            background: transparent !important;
-            border: 2px solid var(--text-main);
-            box-shadow: none !important;
-        }
-        html.walkman #playPauseBtn i,
-        html.walkman #miniPlayPauseBtn i {
-            color: var(--text-main) !important;
-        }
-        html.walkman #prevBtn, html.walkman #nextBtn {
-            width: 50px; height: 50px; padding: 0; border-radius: 50%;
-            border: 2px solid var(--text-main); color: var(--text-main) !important;
-            display: flex; align-items: center; justify-content: center; font-size: 16px;
-            background: transparent;
-        }
-        /* Repeat acceso in questo tema: --accent qui è il bianco/argento del resto
-           dell'interfaccia, quindi l'icona risultava bianca. Usiamo lo stesso viola
-           "highlight" già riservato in questo tema agli indicatori attivi (barra del
-           minutaggio, brano in riproduzione) al posto di --accent. L'outline flat resta
-           quella di --bg-gradient-top di questo tema (nero), coerente con l'altra skin. */
-        html.walkman #repeatBtn.active #repeatIcon {
-            color: var(--walkman-highlight) !important;
-            -webkit-text-stroke-color: var(--bg-gradient-top);
-        }
-        /* Stesso motivo del repeat qui sopra: --accent in questo tema è bianco/argento,
-           quindi il timer acceso risultava indistinguibile dallo stato spento. */
-        html.walkman #sleepTimerBtn.active #sleepTimerIcon {
-            color: var(--walkman-highlight) !important;
-            -webkit-text-stroke-color: var(--bg-gradient-top);
-        }
-        html.walkman .results-header .rt { color: var(--walkman-highlight) !important; }
-        /* Icona download nell'header "In Riproduzione": qui --accent è il bianco/argento
-           del resto dell'interfaccia (stesso motivo del repeat/sleep timer sopra), quindi
-           va forzata sullo stesso viola "highlight" per restare accentata come nelle
-           altra skin invece di confondersi con le altre icone bianche dell'header. */
-        html.walkman #sheetDownloadBtn,
-        html.walkman #sheetDownloadBtn i,
-        html.walkman #lyricsOffsetBtn,
-        html.walkman #lyricsOffsetBtn i,
-        html.walkman #driveModeBtn,
-        html.walkman #driveModeBtn i {
-            color: var(--walkman-highlight) !important;
-        }
-        html.walkman #pwaInstallBtn {
-            background: transparent !important;
-            border: 1px solid var(--text-main);
-            color: var(--text-main) !important;
-        }
-        html.walkman #sheetArtworkGlow { display: none; }
-
-        /* ================= SKIN "IMMERSIVE" (opzionale, attivabile dalle Impostazioni) =================
+        /* ================= SKIN "IMMERSIVE" (unica skin dell'app, sempre attiva) =================
            Base quasi-nera e accento bianco per home/lista/impostazioni (canvas neutro che
            non entra in conflitto con nessuna copertina), mentre Now Playing sheet, schermata
            lyrics e mini player prendono ognuno un colore DINAMICO calcolato dall'artwork del
@@ -1286,10 +1099,9 @@
            --immersive-color - vedi updateImmersiveColorFromArtwork), non più un bianco
            fisso: così anche le cornici seguono la tonalità del brano in ascolto. Le card
            playlist recenti in home (.qcard .circle) NON sono più incluse qui: uniformate
-           invece al grigio-lavanda di Moderna via la regola base "html:not(.walkman)
-           .qcard .circle" più sopra, restano quindi neutre indipendentemente dal brano -
-           solo la card "più recente" evidenziata (.qcard.latest, vedi sotto) segue ancora
-           l'accento dinamico. */
+           invece al grigio-lavanda di base via la regola ".qcard .circle" più sopra,
+           restano quindi neutre indipendentemente dal brano - solo la card "più recente"
+           evidenziata (.qcard.latest, vedi sotto) segue ancora l'accento dinamico. */
         html.immersive .settings-playlist-thumb,
         html.immersive #miniPlayerImgFrame,
         html.immersive #sheetArtworkFrame,
@@ -1327,11 +1139,7 @@
         html.immersive .track-row.playing .track-thumb-wrap {
             border-color: var(--immersive-frame-contrast) !important;
         }
-        /* La rotazione vinile non ha senso in questa skin (l'artwork non è più un disco
-           rotondo ma lo sfondo pieno-schermo): l'intera riga di impostazione va nascosta. */
-        html.immersive .vinyl-toggle-row { display: none; }
-
-        /* ---- Now Playing sheet: artwork come sfondo (niente più vinile rotondo) ---- */
+        /* ---- Now Playing sheet: artwork come sfondo (niente più disco rotondo in vista) ---- */
         html.immersive #vinylSlide { display: none; }
         html.immersive #nowPlayingSheet { background: var(--immersive-color); }
         #immersiveBg { display: none; }
@@ -1575,105 +1383,15 @@
             transition: color 0.45s ease;
         }
 
-        /* ---- Font dedicato: now playing sheet, lista canzoni/ricerche, miniplayer ---- */
-        html.walkman #nowPlayingSheet,
-        html.walkman #trackList,
-        html.walkman #searchContainer,
-        html.walkman #resultsHeader,
-        html.walkman #miniPlayer {
-            font-family: 'Roboto', sans-serif;
-        }
-        html.walkman #searchInput {
-            font-family: 'Roboto', sans-serif !important;
-        }
-
-        /* ---- Highlight viola nella lista (titolo + badge della traccia in riproduzione) ----
-           Variabile dedicata: non tocco --accent (resta l'argento del resto dello skin), così
-           il viola compare solo qui e sulla barra del minutaggio, come richiesto. */
-        html.walkman { --walkman-highlight: #B392F5; }
-        html.walkman .track-row.playing .custom-text-accent { color: var(--walkman-highlight) !important; }
-        /* Logo "SBIXIFY": le lettere "FY" prendono lo stesso viola chiaro dell'highlight
-           invece dell'argento di --accent, che qui sarebbe poco distintivo. */
-        html.walkman .app-title .custom-text-accent { color: var(--walkman-highlight) !important; }
-
-        /* ---- Barra del minutaggio (miniplayer + now playing sheet), stesso viola ---- */
-        html.walkman #progressBar,
-        html.walkman #miniProgressBar {
-            background-color: var(--walkman-highlight) !important;
-        }
-
-        /* ---- Selettore Tema: il tile/thumb che segue la scheda attiva usa lo stesso
-           viola invece del bianco/argento di --accent, quando la skin attiva è Walkman
-           (si applica indipendentemente da quale scheda è selezionata in quel momento,
-           dato che l'unica accesa è comunque quella di html.walkman). Testo del tab
-           attivo lasciato scuro (#14120e, invariato): su questo viola chiaro il nero
-           mantiene un contrasto solido (~8:1), il bianco scenderebbe sotto la soglia
-           leggibile (~2.5:1). */
-        html.walkman .theme-select-thumb { background: var(--walkman-highlight); }
-
-        /* ---- Icona play/pause: usa il vero glifo Font Awesome (fa-play/fa-pause), esattamente
-           come avanti/indietro (fa-backward-fast/fa-forward-fast), invece del triangolo disegnato
-           a mano con mask-image usato in precedenza. Il colore è già impostato dalla regola
-           "html.walkman #playPauseBtn i / #miniPlayPauseBtn i" più in alto in questo file. */
-
-        /* ================= Selettore Tema (Moderna / Walkman) ================= */
+        /* ================= Riga label/sottotitolo (stile riusabile per righe impostazioni) ================= */
         .theme-select-row .lbl { font-size:13px; font-weight:600; color:var(--text-main); }
         .theme-select-row .sub { font-size:11px; color:var(--text-muted); margin-top:2px; margin-bottom:10px; }
-        .theme-select { position:relative; display:flex; gap:6px; background:var(--bg-input); padding:4px; border-radius:14px; }
-        .theme-select-thumb {
-            position:absolute; top:4px; bottom:4px; left:0; width:0; border-radius:10px; background:var(--accent);
-            transition: transform .32s cubic-bezier(0.34,1.56,0.64,1), width .32s cubic-bezier(0.34,1.56,0.64,1);
-            z-index:0; pointer-events:none;
-        }
-        .theme-select-thumb.no-anim { transition:none; }
-        .theme-opt {
-            position:relative; z-index:1; flex:1; text-align:center; font-size:11.5px; font-weight:700; padding:9px 4px;
-            border-radius:10px; color:var(--text-muted); cursor:pointer; user-select:none;
-            transition: color .22s ease;
-        }
-        .theme-opt.active { color:#14120e; }
-        /* Scheda "Immersive" selezionata: il tile che la evidenzia segue anche lui il
-           colore dinamico dell'artwork (--immersive-accent, stesso schema di pillole/mini
-           player), non più il bianco fisso di --accent - coerente col resto della skin.
-           Il testo passa a chiaro o scuro (--immersive-accent-text, calcolato insieme al
-           colore in base al contrasto) esattamente come altrove, invece del nero fisso
-           pensato per il bianco statico di prima. Nessuna condizione su quale scheda sia
-           "active" qui: quando html.immersive è applicata la scheda attiva è sempre e solo
-           quella "Immersive" (le tre skin sono mutuamente esclusive). */
-        html.immersive .theme-select-thumb { background: var(--immersive-accent); }
-        html.immersive .theme-opt.active { color: var(--immersive-accent-text); }
 
-        /* ================= Rotazione "vinile" (now playing sheet) =================
-           L'immagine gira lentamente (1 giro ogni 20s, lineare come un vero piatto)
-           SOLO quando la classe .vinyl-rotate è attiva su #sheetArtworkImg. Si ferma
-           in pausa mantenendo l'angolo raggiunto (.vinyl-paused mette l'animazione in
-           pausa invece di rimuoverla, così riparte da dove si era interrotta invece
-           che da zero). Il giro riguarda solo l'<img>, non #sheetArtworkFrame: l'ombra
-           e il bordo del cerchio restano fermi, non "girano" in modo innaturale.
-           IMPORTANTE: i keyframe includono anche scale(var(--artwork-zoom)), lo stesso
-           zoom-crop applicato altrove a #sheetArtworkImg (vedi sopra, ~riga 317) per
-           nascondere i bordi neri "cuciti" dentro alcune copertine Spotify a bassa
-           risoluzione. Se qui si mettesse solo rotate(...), l'animation CSS
-           SOSTITUIREBBE del tutto il transform statico (scale) invece di sommarcisi:
-           durante la rotazione lo zoom sparirebbe e quei bordi neri ricomparirebbero
-           a scatti, visibili come "spicchi" neri che ruotano insieme all'immagine. */
-        @keyframes vinylSpin {
-            from { transform: scale(var(--artwork-rotate-zoom)) rotate(0deg); }
-            to { transform: scale(var(--artwork-rotate-zoom)) rotate(360deg); }
-        }
-        #sheetArtworkImg.vinyl-rotate {
-            animation: vinylSpin 20s linear infinite;
-        }
-        #sheetArtworkImg.vinyl-rotate.vinyl-paused {
-            animation-play-state: paused;
-        }
         /* Rete di sicurezza: forza il clip circolare anche sulla cornice, indipendente da
            border-radius+overflow-hidden (che su alcuni WebView Android può avere problemi
            a "seguire" un figlio con transform, lasciando sfuggire gli angoli dell'immagine
-           oltre il bordo tondo - capitava ANCHE da fermo, non solo durante la rotazione,
-           perché l'immagine ha sempre un piccolo transform:scale attivo per il crop dei
-           bordi neri, vedi sopra ~riga 320). clip-path da solo si è rivelato insufficiente
-           sullo stesso WebView: aggiunta una maschera radiale (mask-image), tecnica diversa
+           oltre il bordo tondo). clip-path da solo si è rivelato insufficiente sullo
+           stesso WebView: aggiunta una maschera radiale (mask-image), tecnica diversa
            e più affidabile per questo tipo di bug di clipping. */
         #sheetArtworkFrame {
             clip-path: circle(50% at 50% 50%);
@@ -1683,22 +1401,19 @@
             mask-repeat: no-repeat;
         }
 
-        /* Interruttore "Rotazione vinile" nelle Impostazioni: stessa pillola a due
-           stati del selettore Tema, riutilizzando le stesse classi/variabili così i due
-           controlli restano visivamente coerenti. */
-        /* ================= Testi sincronizzati (swipe orizzontale sul vinile) =================
+        /* ================= Testi sincronizzati (swipe orizzontale sulla fascia artwork) =================
            Sostituisce SOLO la fascia dell'artwork (da sotto l'header a sopra
-           titolo/controlli), non l'intera sheet. Swipe verso sinistra sul vinile: il
-           disco scorre via a sinistra e sparisce, il testo entra al suo posto da destra.
-           Swipe verso destra sul testo: animazione inversa, torna il vinile. La riga
-           "cantata ora" è evidenziata con --accent (si adatta automaticamente al tema
-           attivo), le altre restano attenuate; lo scroll automatico la mantiene centrata.
+           titolo/controlli), non l'intera sheet. Swipe verso sinistra: l'artwork scorre
+           via a sinistra e sparisce, il testo entra al suo posto da destra. Swipe verso
+           destra sul testo: animazione inversa. La riga "cantata ora" è evidenziata con
+           --accent (si adatta automaticamente al tema attivo), le altre restano
+           attenuate; lo scroll automatico la mantiene centrata.
            NB: niente overflow:hidden qui sopra (band NON lo ha) - il ritaglio necessario
-           a nascondere vinile/testo quando sono fuori vista arriva già dal contenitore
+           a nascondere artwork/testo quando sono fuori vista arriva già dal contenitore
            #nowPlayingSheet (schermo intero, overflow:hidden). Prima invece il ritaglio
            extra su questa fascia (più stretta del foglio) tagliava in modo asimmetrico
-           anche l'alone sfocato del vinile (#sheetArtworkGlow), creando lo strano "alone
-           quadrato" visibile pure a vinile fermo: rimosso qui, il glow resta libero di
+           anche l'alone sfocato dell'artwork (#sheetArtworkGlow), creando lo strano
+           "alone quadrato" visibile pure da ferma: rimosso qui, il glow resta libero di
            sfumare senza bordi netti. */
         #artworkBand {
             position: relative;
@@ -1799,26 +1514,6 @@
             font-size: 13px;
         }
         .lyrics-state i { font-size: 22px; opacity: 0.6; }
-
-        .vinyl-toggle-row { margin-top:18px; }
-        .vinyl-toggle { position:relative; display:flex; gap:6px; background:var(--bg-input); padding:4px; border-radius:14px; }
-        .vinyl-toggle-thumb {
-            position:absolute; top:4px; bottom:4px; left:0; width:0; border-radius:10px; background:var(--accent);
-            transition: transform .32s cubic-bezier(0.34,1.56,0.64,1), width .32s cubic-bezier(0.34,1.56,0.64,1);
-            z-index:0; pointer-events:none;
-        }
-        .vinyl-toggle-thumb.no-anim { transition:none; }
-        .vinyl-opt {
-            position:relative; z-index:1; flex:1; text-align:center; font-size:11.5px; font-weight:700; padding:9px 4px;
-            border-radius:10px; color:var(--text-muted); cursor:pointer; user-select:none;
-            transition: color .22s ease;
-        }
-        .vinyl-opt.active { color:#14120e; }
-        html.walkman .vinyl-toggle-thumb { background: var(--walkman-highlight); }
-        /* Stesso motivo di repeat/sleep timer/download qui sopra: --accent in questo tema
-           è bianco/argento, quindi la riga di testo "cantata ora" risultava bianca invece
-           che nel viola highlight riservato agli stati attivi. */
-        html.walkman .lyrics-line.active { color: var(--walkman-highlight); }
 
         /* ================= Modalità Auto (testo a schermo intero, orizzontale) =================
            Pulsante gemello di #lyricsOffsetBtn ma a destra, stessa striscia in alto,
@@ -2159,12 +1854,9 @@
                     <!-- Nessun placeholder/squircle: l'immagine è invisibile (opacity-0) finché
                          non è caricata con successo, poi appare direttamente con i suoi angoli
                          arrotondati. Prima del caricamento non c'è alcun elemento visibile al
-                         suo posto.
-                         L'opacità vive su questo contenitore (#sheetArtworkFrame), NON
-                         sull'<img> al suo interno: quando la rotazione "vinile" è attiva è
-                         solo l'immagine a ruotare (mascherata dal cerchio con overflow:hidden),
-                         mentre l'ombra (ora su #sheetArtworkShadow) resta ferma invece di
-                         girare in modo innaturale insieme al disco. -->
+                         suo posto. L'opacità vive su questo contenitore (#sheetArtworkFrame),
+                         non sull'<img> al suo interno, così l'immagine e la sua ombra
+                         (#sheetArtworkShadow) restano perfettamente sincronizzate nel fade. -->
                     <div id="sheetArtworkFrame" class="w-full h-full rounded-full overflow-hidden opacity-0 transition-opacity duration-300">
                         <img id="sheetArtworkImg" class="w-full h-full object-cover" alt="">
                     </div>
@@ -2309,29 +2001,7 @@
                 <i class="fa-solid fa-equals mr-2.5 custom-text-accent"></i> Impostazioni
             </h3>
             
-            <div class="mb-2">
-                <div class="theme-select-row">
-                    <div class="lbl">Tema</div>
-                    <div class="sub">Scegli l'aspetto dell'app</div>
-                    <div class="theme-select" id="themeSelect" role="tablist">
-                        <div class="theme-select-thumb" id="themeSelectThumb"></div>
-                        <div class="theme-opt" data-theme="moderna" role="tab">Moderna</div>
-                        <div class="theme-opt" data-theme="walkman" role="tab">Walkman</div>
-                        <div class="theme-opt" data-theme="immersive" role="tab">Immersive</div>
-                    </div>
-                </div>
-                <div class="theme-select-row vinyl-toggle-row">
-                    <div class="lbl">Rotazione vinile</div>
-                    <div class="sub">Fa girare lentamente la copertina nella schermata di riproduzione</div>
-                    <div class="vinyl-toggle" id="vinylToggle" role="tablist">
-                        <div class="vinyl-toggle-thumb" id="vinylToggleThumb"></div>
-                        <div class="vinyl-opt" data-vinyl="off" role="tab">Off</div>
-                        <div class="vinyl-opt" data-vinyl="on" role="tab">On</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mb-2 mt-6 border-t border-white/5 pt-4" id="searchServiceSection">
+            <div class="mb-2" id="searchServiceSection">
                 <div class="flex items-center justify-between mb-2">
                     <label class="block text-xs font-bold uppercase tracking-wider custom-text-muted">Servizio di ricerca</label>
                     <span id="modalApiBadgeError" class="hidden text-[10px] font-bold text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">Non disponibile</span>
@@ -2353,9 +2023,8 @@
     </div>
 
     <script>
-        // Le due skin disponibili (Moderna e Walkman) sono definite tramite variabili CSS
-        // (token system) in testa al documento; il tema attivo viene applicato aggiungendo/
-        // rimuovendo la classe "walkman" su <html> (vedi selettore tema più sotto).
+        // Immersive è l'unica skin dell'app: la classe "immersive" viene applicata in modo
+        // permanente su <html> dallo script in testa al documento (vedi lì).
         let appState = {
             tracks: [],
             currentIndex: -1,
@@ -2729,11 +2398,6 @@
                 }
             });
         }
-        // Ponte verso lo scope separato del selettore tema più in basso nel file (dentro il
-        // listener DOMContentLoaded): serve a riapplicare subito l'artwork corrente quando si
-        // passa manualmente al tema "Immersive" dalle Impostazioni.
-        window.sbixifyApplyImmersiveArtwork = applyImmersiveArtwork;
-
         const sheetArtworkImgEl = document.getElementById('sheetArtworkImg');
         const sheetArtworkFrameEl = document.getElementById('sheetArtworkFrame');
         const sheetArtworkGlowEl = document.getElementById('sheetArtworkGlow');
@@ -3575,165 +3239,19 @@
             });
             document.getElementById('modalSaveBtn').addEventListener('click', saveSettingsFromModal);
 
-            // ================= Selettore Tema (Moderna / Walkman) =================
-            const themeSelectEl = document.getElementById('themeSelect');
-            const themeThumbEl = document.getElementById('themeSelectThumb');
-            const themeOptEls = themeSelectEl ? Array.from(themeSelectEl.querySelectorAll('.theme-opt')) : [];
-            const prevIconEl = document.getElementById('prevIcon');
-            const nextIconEl = document.getElementById('nextIcon');
-            let themeInitDone = false;
-            function positionThemeThumb(el, animate) {
-                if (!themeThumbEl || !el) return;
-                if (!animate) themeThumbEl.classList.add('no-anim');
-                themeThumbEl.style.width = el.offsetWidth + 'px';
-                themeThumbEl.style.transform = 'translateX(' + el.offsetLeft + 'px)';
-                if (!animate) {
-                    // forza il reflow prima di riattivare la transizione, altrimenti il primo
-                    // posizionamento verrebbe comunque animato dalla posizione 0 di partenza
-                    void themeThumbEl.offsetWidth;
-                    themeThumbEl.classList.remove('no-anim');
-                }
-            }
-            // Scambio icone avanti/indietro: nel tema Walkman uso le doppie frecce CON barra
-            // (fa-backward-fast / fa-forward-fast) al posto delle classiche fa-backward-step/
-            // fa-forward-step, identiche a quelle dei tasti fisici del lettore che stiamo imitando.
-            function applyWalkmanIcons(on) {
-                if (prevIconEl) {
-                    prevIconEl.classList.toggle('fa-backward-step', !on);
-                    prevIconEl.classList.toggle('fa-backward-fast', on);
-                }
-                if (nextIconEl) {
-                    nextIconEl.classList.toggle('fa-forward-step', !on);
-                    nextIconEl.classList.toggle('fa-forward-fast', on);
-                }
-            }
-            // Tiene allineato il colore della barra di stato di sistema (status bar Android/iOS,
-            // scheda del task switcher) con lo sfondo reale dell'app: Walkman porta
-            // --bg-main a nero puro, quindi anche qui deve diventare nero, non restare sul
-            // viola/blu di "Moderna" come accadeva prima (nessun aggiornamento a runtime).
-            function updateMetaThemeColor(theme) {
-                let color = '#000000';
-                if (theme === 'walkman') color = '#000000';
-                else if (theme === 'immersive') {
-                    // Il colore di questa skin è dinamico (dipende dal brano in riproduzione):
-                    // legge quello già calcolato in --immersive-color invece di uno fisso.
-                    const dynamic = getComputedStyle(document.documentElement).getPropertyValue('--immersive-color').trim();
-                    color = dynamic || '#0B0B0E';
-                }
-                document.getElementById('metaThemeColor')?.setAttribute('content', color);
-                document.getElementById('metaThemeColorDark')?.setAttribute('content', color);
-            }
-            function setTheme(theme) {
-                if (theme !== 'walkman' && theme !== 'immersive') theme = 'moderna';
-                const wasImmersive = document.documentElement.classList.contains('immersive');
-                document.documentElement.classList.remove('walkman', 'immersive');
-                // "immersive-grey" (vedi html.immersive.immersive-grey #miniPlayPauseBtn nel
-                // CSS) è rilevante solo dentro la skin Immersive: pulita qui a ogni cambio
-                // skin così non resta "appesa" per errore se si rientra in Immersive prima
-                // che updateImmersiveColorFromArtwork sia già passata a ricalcolarla.
-                document.documentElement.classList.remove('immersive-grey');
-                if (theme !== 'moderna') document.documentElement.classList.add(theme);
-                applyWalkmanIcons(theme === 'walkman');
-                // Se si passa a "Immersive" con un brano già in corso, riapplica subito il suo
-                // artwork come sfondo invece di aspettare il prossimo cambio brano.
-                if (theme === 'immersive' && window.sbixifyApplyImmersiveArtwork) {
-                    const currentSrc = document.getElementById('sheetArtworkImg')?.src;
-                    if (currentSrc) window.sbixifyApplyImmersiveArtwork(currentSrc);
-                }
-                // Si esce da "Immersive" verso un'altra skin: la riga "Rotazione vinile" era
-                // rimasta nascosta (display:none via CSS) per tutto il tempo in cui Immersive
-                // era attiva, quindi il suo cursore era stato posizionato/dimensionato a
-                // larghezza zero (offsetWidth di un elemento display:none è sempre 0) - risultato
-                // visibile come cursore disallineato in Impostazioni una volta tornato visibile.
-                // Stesso discorso per l'animazione di rotazione del vinile: partita/aggiornata
-                // mentre l'elemento non era renderizzato, può restare "congelata" anche dopo che
-                // torna visibile. Qui si ricalcola tutto non appena il layout torna disponibile,
-                // non solo al primo avvio della pagina.
-                if (wasImmersive && theme !== 'immersive') {
-                    requestAnimationFrame(() => {
-                        const activeVinylOpt = vinylOptEls.find(opt => opt.classList.contains('active'));
-                        if (activeVinylOpt) positionVinylThumb(activeVinylOpt, false);
-                        if (sheetArtworkImgEl && sheetArtworkImgEl.classList.contains('vinyl-rotate')) {
-                            sheetArtworkImgEl.classList.remove('vinyl-rotate');
-                            void sheetArtworkImgEl.offsetWidth;
-                            sheetArtworkImgEl.classList.add('vinyl-rotate');
-                        }
-                    });
-                }
-                updateMetaThemeColor(theme);
-                const activeOpt = themeOptEls.find(opt => opt.dataset.theme === theme);
-                themeOptEls.forEach(opt => opt.classList.toggle('active', opt === activeOpt));
-                positionThemeThumb(activeOpt, themeInitDone);
-                themeInitDone = true;
-                try {
-                    localStorage.setItem('sbixify_theme', theme);
-                } catch (e) {}
-            }
-            // ================= Rotazione Vinile (On/Off) =================
-            const vinylToggleEl = document.getElementById('vinylToggle');
-            const vinylThumbEl = document.getElementById('vinylToggleThumb');
-            const vinylOptEls = vinylToggleEl ? Array.from(vinylToggleEl.querySelectorAll('.vinyl-opt')) : [];
-            let vinylInitDone = false;
-            function positionVinylThumb(el, animate) {
-                if (!vinylThumbEl || !el) return;
-                if (!animate) vinylThumbEl.classList.add('no-anim');
-                vinylThumbEl.style.width = el.offsetWidth + 'px';
-                vinylThumbEl.style.transform = 'translateX(' + el.offsetLeft + 'px)';
-                if (!animate) {
-                    void vinylThumbEl.offsetWidth;
-                    vinylThumbEl.classList.remove('no-anim');
-                }
-            }
-            function setVinylRotation(on) {
-                const activeOpt = vinylOptEls.find(opt => opt.dataset.vinyl === (on ? 'on' : 'off'));
-                vinylOptEls.forEach(opt => opt.classList.toggle('active', opt === activeOpt));
-                positionVinylThumb(activeOpt, vinylInitDone);
-                vinylInitDone = true;
-                appState.vinylRotationEnabled = on;
-                if (sheetArtworkImgEl) {
-                    sheetArtworkImgEl.classList.toggle('vinyl-rotate', on);
-                    // Riparte in pausa se il brano non è in riproduzione in questo momento:
-                    // così, quando poi si preme play, l'animazione riprende da dove si trova
-                    // invece di scattare avanti dall'angolo 0.
-                    sheetArtworkImgEl.classList.toggle('vinyl-paused', on && !appState.isPlaying);
-                }
-                try {
-                    localStorage.setItem('sbixify_vinyl_rotation', on ? '1' : '0');
-                } catch (e) {}
-            }
-            if (vinylToggleEl) {
-                // Per chi installa l'app per la prima volta (nessuna preferenza salvata
-                // ancora in localStorage) la rotazione vinile parte attiva di default;
-                // chi invece l'ha già impostata in passato (On o Off) mantiene la propria
-                // scelta invariata.
-                let savedVinyl = true;
-                try {
-                    const storedVinyl = localStorage.getItem('sbixify_vinyl_rotation');
-                    if (storedVinyl !== null) savedVinyl = storedVinyl === '1';
-                } catch (e) {}
-                setVinylRotation(savedVinyl);
-                vinylOptEls.forEach(opt => {
-                    opt.addEventListener('click', () => setVinylRotation(opt.dataset.vinyl === 'on'));
-                });
-                window.addEventListener('resize', () => {
-                    const activeOpt = vinylOptEls.find(opt => opt.classList.contains('active'));
-                    if (activeOpt) positionVinylThumb(activeOpt, false);
-                });
-            }
+            // Il selettore tema (Moderna/Walkman/Immersive) è stato rimosso: Immersive è
+            // ora l'unica skin dell'app, applicata in modo permanente dallo script in testa
+            // al documento (prima di qualsiasi paint). Il colore dinamico della barra di
+            // stato di sistema resta comunque aggiornato ad ogni cambio brano da
+            // updateImmersiveColorFromArtwork (vedi sopra in questo file), indipendentemente
+            // da qui: non serve più nessuna logica di cambio tema a runtime.
 
-            if (themeSelectEl) {
-                let currentTheme = 'moderna';
-                if (document.documentElement.classList.contains('walkman')) currentTheme = 'walkman';
-                else if (document.documentElement.classList.contains('immersive')) currentTheme = 'immersive';
-                setTheme(currentTheme);
-                themeOptEls.forEach(opt => {
-                    opt.addEventListener('click', () => setTheme(opt.dataset.theme));
-                });
-                window.addEventListener('resize', () => {
-                    const activeOpt = themeOptEls.find(opt => opt.classList.contains('active'));
-                    if (activeOpt) positionThemeThumb(activeOpt, false);
-                });
-            }
+            // ================= Rotazione Vinile: RIMOSSA =================
+            // Il toggle "Rotazione vinile" nelle Impostazioni e l'animazione di rotazione
+            // sono stati rimossi insieme alle skin Moderna/Walkman: in Immersive l'artwork
+            // era già mostrata come sfondo pieno-schermo, non come disco rotante (vedi
+            // "html.immersive #vinylSlide { display: none; }" nel CSS), quindi la feature
+            // non era più raggiungibile da nessuna skin rimasta.
 
             // Click fuori dal popup (sul backdrop) chiude il menu impostazioni
             document.getElementById('apiModal').addEventListener('click', (e) => {
@@ -3746,7 +3264,6 @@
             setupSheetCloseSwipe();
             setupSettingsSheetSwipe();
             setupLyricsPanel();
-            setupVinylScrub();
             checkAndApplyMarquee();
         });
 
@@ -4222,264 +3739,6 @@
         // sheetCloseStart/Move/End più sotto): altrimenti, essendo questa fascia sopra
         // quell'area con eventi propri attivi su tutta la sua altezza, il gesto di
         // chiusura lì sotto non riceverebbe mai il tocco.
-        // ================= Scrub tramite rotazione manuale del vinile =================
-        // L'utente ruota il disco con il dito come un vero jog wheel: durante il gesto
-        // la barra di avanzamento e il tempo si muovono in anteprima live (stessa idea
-        // di updateScrubPositionGeneral sulla barra), ma il seek VERO su YouTube parte
-        // una sola volta al rilascio (endVinylScrub) - seekTo() ripetuto ad ogni
-        // micro-movimento del dito sarebbe scattoso e inutilmente pesante per il player.
-        // Il gesto è agganciato SOLO al disco (#sheetArtworkImg), non a tutta la fascia
-        // #artworkBand: quest'ultima ha già lo swipe orizzontale (testi) e verticale
-        // (chiusura sheet) gestiti da setupLyricsPanel - stopPropagation() qui sotto
-        // evita che lo stesso tocco attivi anche quelle gesture.
-        const VINYL_SECONDS_PER_ROTATION = 6; // secondi di brano per un giro completo del disco (regolabile)
-        const VINYL_SPIN_DURATION_S = 20; // deve combaciare con la durata di @keyframes vinylSpin in CSS
-
-        let vinylScrubActive = false;
-        let vinylScrubCenterX = 0, vinylScrubCenterY = 0;
-        let vinylScrubLastAngleDeg = 0;   // ultimo angolo del DITO letto (per calcolare i delta incrementali)
-        let vinylScrubBaseVisualAngle = 0; // angolo VISIVO del disco al momento del touchstart
-        let vinylScrubAccumulatedDeg = 0;  // rotazione accumulata durante il drag corrente (può superare ±360)
-        let vinylScrubStartTime = 0;       // tempo di riproduzione (secondi) al touchstart
-        let vinylScrubTargetTime = 0;      // tempo target ricalcolato ad ogni movimento
-
-        // Legge l'angolo di rotazione ATTUALMENTE visibile sul disco leggendo la matrice
-        // di trasformazione calcolata, sia che provenga dall'animazione CSS automatica
-        // (in corso o in pausa) sia da un drag precedente: evita un salto visivo
-        // all'inizio del gesto, qualunque sia lo stato di partenza del disco.
-        function getCurrentVinylVisualAngleDeg() {
-            if (!sheetArtworkImgEl) return 0;
-            const transform = getComputedStyle(sheetArtworkImgEl).transform;
-            if (!transform || transform === 'none') return 0;
-            const match = transform.match(/matrix\(([^)]+)\)/);
-            if (!match) return 0;
-            const [a, b] = match[1].split(',').map(parseFloat);
-            let angle = Math.atan2(b, a) * (180 / Math.PI);
-            if (angle < 0) angle += 360;
-            return angle;
-        }
-
-        function vinylAngleFromCenter(clientX, clientY) {
-            return Math.atan2(clientY - vinylScrubCenterY, clientX - vinylScrubCenterX) * (180 / Math.PI);
-        }
-
-        function startVinylScrub(clientX, clientY) {
-            if (!player?.getDuration || nowPlayingIndex === -1) return false;
-            // Lo scrub ha senso solo quando il disco sta effettivamente girando come un
-            // vinile: con "Rotazione vinile" disattivata nelle Impostazioni, o nella skin
-            // Immersive (che non usa mai il disco tondo animato), l'artwork è una semplice
-            // immagine ferma e va lasciata tale - niente gesto di rotazione/seek lì sopra.
-            if (!appState.vinylRotationEnabled) return false;
-            if (document.documentElement.classList.contains('immersive')) return false;
-
-            const currentTrack = nowPlayingTracks[nowPlayingIndex];
-            const activeVideoId = player.getVideoData ? player.getVideoData().video_id : null;
-            // Stessa cautela già vista in updateScrubPositionGeneral: senza un player
-            // davvero agganciato al brano corrente, durata/tempo letti sarebbero quelli
-            // del brano uscente. Qui, a differenza della barra, scegliamo semplicemente
-            // di NON avviare il gesto (niente coda "pending"): scrubbare col vinile un
-            // brano che non è ancora pronto non ha un caso d'uso reale.
-            const playerReady = currentTrack && currentTrack.id && activeVideoId === currentTrack.id && playLoadConfirmedToken === playLoadToken;
-            if (!playerReady) return false;
-
-            const rect = sheetArtworkImgEl.getBoundingClientRect();
-            vinylScrubCenterX = rect.left + rect.width / 2;
-            vinylScrubCenterY = rect.top + rect.height / 2;
-            vinylScrubLastAngleDeg = vinylAngleFromCenter(clientX, clientY);
-            vinylScrubBaseVisualAngle = getCurrentVinylVisualAngleDeg();
-            vinylScrubAccumulatedDeg = 0;
-            vinylScrubStartTime = player.getCurrentTime() || 0;
-            vinylScrubTargetTime = vinylScrubStartTime;
-            vinylScrubActive = true;
-
-            // Stacca il disco dall'animazione CSS: da qui in poi la rotazione è guidata
-            // a mano dal gesto, non più dai keyframe automatici (che ignorerebbero
-            // comunque un transform impostato via JS, avendo priorità sullo stile inline).
-            sheetArtworkImgEl.classList.remove('vinyl-rotate', 'vinyl-paused');
-            sheetArtworkImgEl.style.transition = 'none';
-            // IMPORTANTE: scrivere SUBITO il transform manuale, qui, e non aspettare il
-            // primo moveVinylScrub. Rimuovendo le classi sopra, il disco perde all'istante
-            // sia l'animazione che qualunque transform inline (non ancora scritto): nel
-            // vuoto tra questo momento e il primo touchmove, il browser applicherebbe la
-            // regola CSS di base (solo scale, niente rotate), visibile come uno scatto
-            // del disco che "si centra" per un istante prima di seguire il dito.
-            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${vinylScrubBaseVisualAngle}deg)`;
-
-            progressBar.classList.add('scrubbing');
-            miniProgressBar.classList.add('scrubbing');
-            return true;
-        }
-
-        function moveVinylScrub(clientX, clientY) {
-            if (!vinylScrubActive) return;
-            const currentAngle = vinylAngleFromCenter(clientX, clientY);
-            let delta = currentAngle - vinylScrubLastAngleDeg;
-            // Normalizza il delta tra -180 e +180: senza questo, superare il punto in cui
-            // l'angolo "salta" da 179° a -179° (o viceversa) verrebbe letto come un balzo
-            // enorme invece che come il piccolo movimento continuo che è in realtà.
-            while (delta > 180) delta -= 360;
-            while (delta < -180) delta += 360;
-
-            vinylScrubAccumulatedDeg += delta;
-            vinylScrubLastAngleDeg = currentAngle;
-
-            const visualAngle = vinylScrubBaseVisualAngle + vinylScrubAccumulatedDeg;
-            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${visualAngle}deg)`;
-
-            const duration = player.getDuration() || 0;
-            const deltaSeconds = (vinylScrubAccumulatedDeg / 360) * VINYL_SECONDS_PER_ROTATION;
-            vinylScrubTargetTime = Math.max(0, Math.min(duration, vinylScrubStartTime + deltaSeconds));
-
-            // Stessa anteprima live già usata dallo scrub sulla barra di avanzamento
-            // (percentuale sulla barra + etichetta del tempo), qui pilotata dalla
-            // rotazione del disco invece che dal trascinamento diretto della barra.
-            const pct = duration > 0 ? (vinylScrubTargetTime / duration) * 100 : 0;
-            progressBar.style.width = `${pct}%`;
-            miniProgressBar.style.width = `${pct}%`;
-            const label = formatTime(vinylScrubTargetTime);
-            document.getElementById('currentTime').innerText = label;
-            document.getElementById('miniCurrentTime').innerText = label;
-        }
-
-        function endVinylScrub() {
-            if (!vinylScrubActive) return;
-            vinylScrubActive = false;
-            progressBar.classList.remove('scrubbing');
-            miniProgressBar.classList.remove('scrubbing');
-            sheetArtworkImgEl.style.transition = '';
-
-            try { player.seekTo(vinylScrubTargetTime, true); } catch (err) {}
-            updateMediaSessionPosition();
-
-            // Riaggancia il disco all'animazione automatica ripartendo dall'angolo VISIVO
-            // raggiunto, invece di farlo scattare a 0°: un animation-delay negativo fa
-            // "credere" all'animazione di essere già a quel punto del suo ciclo di 20s.
-            if (appState.vinylRotationEnabled) {
-                const finalAngle = ((vinylScrubBaseVisualAngle + vinylScrubAccumulatedDeg) % 360 + 360) % 360;
-                const offsetSeconds = (finalAngle / 360) * VINYL_SPIN_DURATION_S;
-                sheetArtworkImgEl.style.animationDelay = `-${offsetSeconds}s`;
-                sheetArtworkImgEl.style.transform = '';
-                sheetArtworkImgEl.classList.add('vinyl-rotate');
-                sheetArtworkImgEl.classList.toggle('vinyl-paused', !appState.isPlaying);
-            } else {
-                // Rotazione vinile disattivata nelle Impostazioni: il disco torna al suo
-                // stato statico normale (solo zoom-crop, niente rotazione residua).
-                sheetArtworkImgEl.style.transform = '';
-            }
-        }
-
-        // ================= Inerzia "giradischi" nello stop/start del vinile =================
-        // Un vero piatto non parte/si ferma di scatto: ha un'inerzia fisica che lo fa
-        // accelerare/decelerare in una breve rampa invece di passare istantaneamente da
-        // fermo a velocità piena (o viceversa). Qui simuliamo lo stesso effetto pilotando
-        // manualmente l'angolo via requestAnimationFrame per la sola durata della rampa,
-        // per poi riagganciare il disco all'animazione CSS di regime (o fermarlo del
-        // tutto) una volta raggiunta la velocità finale - stesso trucco del
-        // "animation-delay negativo" già usato in endVinylScrub per un aggancio senza scatti.
-        const VINYL_INERTIA_MS = 700; // durata della rampa di accelerazione/decelerazione
-        const VINYL_FULL_SPEED_DEG_PER_MS = 360 / (VINYL_SPIN_DURATION_S * 1000); // velocità di regime
-
-        let vinylInertiaRafId = null;
-        let vinylInertiaToken = 0; // invalida rampe precedenti se ne parte una nuova prima che finiscano
-
-        function cancelVinylInertia() {
-            if (vinylInertiaRafId !== null) {
-                cancelAnimationFrame(vinylInertiaRafId);
-                vinylInertiaRafId = null;
-            }
-            vinylInertiaToken++;
-        }
-
-        // easeOutQuad per la frenata (perde velocità più rapidamente all'inizio, come un
-        // piatto frenato dall'attrito), easeInQuad per la ripartenza (guadagna velocità
-        // più rapidamente verso la fine, come un motore che prende giri).
-        function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
-        function easeInQuad(t) { return t * t; }
-
-        function animateVinylInertia(startPlaying) {
-            if (!sheetArtworkImgEl || vinylScrubActive) return; // niente rampa se l'utente ha il dito sul disco
-
-            cancelVinylInertia();
-            const myToken = vinylInertiaToken;
-
-            const baseAngle = getCurrentVinylVisualAngleDeg();
-            sheetArtworkImgEl.classList.remove('vinyl-rotate', 'vinyl-paused');
-            sheetArtworkImgEl.style.transition = 'none';
-            sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${baseAngle}deg)`;
-
-            const totalRampDeg = VINYL_FULL_SPEED_DEG_PER_MS * VINYL_INERTIA_MS;
-            const startTime = performance.now();
-
-            function frame(now) {
-                if (myToken !== vinylInertiaToken) return; // superata da una rampa più recente
-
-                const t = Math.min(1, (now - startTime) / VINYL_INERTIA_MS);
-                const eased = startPlaying ? easeInQuad(t) : easeOutQuad(t);
-                const visualAngle = baseAngle + eased * totalRampDeg;
-                sheetArtworkImgEl.style.transform = `scale(var(--artwork-rotate-zoom)) rotate(${visualAngle}deg)`;
-
-                if (t < 1) {
-                    vinylInertiaRafId = requestAnimationFrame(frame);
-                    return;
-                }
-
-                // Rampa conclusa: riaggancia il disco all'animazione CSS ripartendo
-                // dall'angolo visivo raggiunto (stesso animation-delay negativo di
-                // endVinylScrub), sia che si stia fermando (resta lì, in pausa) sia che
-                // abbia raggiunto la velocità di regime (continua a girare da lì).
-                vinylInertiaRafId = null;
-                const finalAngle = ((visualAngle % 360) + 360) % 360;
-                const offsetSeconds = (finalAngle / 360) * VINYL_SPIN_DURATION_S;
-                sheetArtworkImgEl.style.animationDelay = `-${offsetSeconds}s`;
-                sheetArtworkImgEl.style.transform = '';
-                sheetArtworkImgEl.classList.add('vinyl-rotate');
-                sheetArtworkImgEl.classList.toggle('vinyl-paused', !startPlaying);
-            }
-            vinylInertiaRafId = requestAnimationFrame(frame);
-        }
-
-        function setupVinylScrub() {
-            if (!sheetArtworkImgEl) return;
-            let dragging = false;
-
-            sheetArtworkImgEl.addEventListener('touchstart', (e) => {
-                const t = e.touches[0];
-                dragging = startVinylScrub(t.clientX, t.clientY);
-                if (dragging) e.stopPropagation();
-            }, { passive: true });
-            sheetArtworkImgEl.addEventListener('touchmove', (e) => {
-                if (!dragging) return;
-                if (e.cancelable) e.preventDefault();
-                e.stopPropagation();
-                moveVinylScrub(e.touches[0].clientX, e.touches[0].clientY);
-            }, { passive: false });
-            sheetArtworkImgEl.addEventListener('touchend', (e) => {
-                if (!dragging) return;
-                dragging = false;
-                e.stopPropagation();
-                endVinylScrub();
-            }, { passive: true });
-            sheetArtworkImgEl.addEventListener('touchcancel', (e) => {
-                if (!dragging) return;
-                dragging = false;
-                e.stopPropagation();
-                endVinylScrub();
-            }, { passive: true });
-
-            // Supporto mouse per test/debug da desktop (PWA resta comunque un'app mobile,
-            // ma è comodo poter provare il gesto anche in un browser normale durante lo sviluppo).
-            sheetArtworkImgEl.addEventListener('mousedown', (e) => {
-                dragging = startVinylScrub(e.clientX, e.clientY);
-                if (dragging) e.stopPropagation();
-            });
-            window.addEventListener('mousemove', (e) => { if (dragging) moveVinylScrub(e.clientX, e.clientY); });
-            window.addEventListener('mouseup', () => {
-                if (!dragging) return;
-                dragging = false;
-                endVinylScrub();
-            });
-        }
-
         function setupLyricsPanel() {
             const band = document.getElementById('artworkBand');
             const SWIPE_THRESHOLD = 40;
@@ -7748,25 +7007,11 @@
                                            // "PLAYING" dopo un semplice buffering da scrubbing/seek
 
         function setPlayIconState(isPlaying) {
-            // Distinzione fondamentale per la rampa d'inerzia qui sotto: un cambio VERO
+            // Distinzione fondamentale più sotto in questa funzione: un cambio VERO
             // (play->pausa o viceversa, l'utente ha davvero toccato qualcosa) merita
-            // l'animazione di accelerazione/decelerazione; una semplice risincronizzazione
-            // dell'icona a stato invariato (es. si riapre la sheet mentre il brano è già
-            // fermo da tempo) no - altrimenti il disco "frenerebbe" di nuovo ogni volta
-            // che questa funzione viene richiamata senza un reale cambio di stato.
+            // l'animazione delle icone; una semplice risincronizzazione a stato invariato
+            // (es. si riapre la sheet mentre il brano è già fermo da tempo) no.
             const isRealChange = lastKnownPlayingState !== isPlaying;
-
-            // La rotazione vinile va aggiornata anche se lo stato "logico" (icona) non è
-            // cambiato, quindi vive FUORI dal return anticipato qui sotto: altrimenti,
-            // ad es. aprendo la sheet mentre il brano è già in pausa, il disco resterebbe
-            // fermo nella posizione sbagliata finché non arriva un vero cambio di stato.
-            if (appState.vinylRotationEnabled && !document.documentElement.classList.contains('immersive')) {
-                if (isRealChange) {
-                    animateVinylInertia(isPlaying); // vero stop/start: rampa con inerzia
-                } else if (sheetArtworkImgEl?.classList.contains('vinyl-rotate')) {
-                    sheetArtworkImgEl.classList.toggle('vinyl-paused', !isPlaying); // solo risincronizzo, istantaneo
-                }
-            }
 
             if (!isRealChange) return; // stato invariato: nessuna animazione delle icone
             lastKnownPlayingState = isPlaying;

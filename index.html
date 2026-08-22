@@ -955,12 +955,14 @@
            stacking tra contenitori con overflow diversi. I due elementi vuoti che
            c'erano prima nell'HTML sono stati rimossi, non servono più. */
         .results-header .back-btn { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; }
-        .results-header .rt { font-size:20px; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
+        .results-header .rt { font-size:16px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; color: var(--accent); }
         .results-header .refresh-btn { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); flex:0 0 auto; font-size:13px; opacity:.85; }
         .results-header .refresh-btn:active { transform:scale(0.9); }
 
         /* ================= HOME: griglia "Playlist" (fissa, 3 colonne) + colonna "Canzoni" ================= */
-        .quick-eyebrow { padding:22px 24px 4px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); font-weight:600; transform: translateZ(0); }
+        /* Stessa dimensione/peso/uppercase del titolo playlist nell'header risultati
+           (.results-header .rt) così le due schermate restano coerenti fra loro. */
+        .quick-eyebrow { padding:22px 24px 4px; font-size:16px; letter-spacing:.02em; text-transform:uppercase; color:var(--text-muted); font-weight:700; transform: translateZ(0); }
         /* La prima label ("Playlist", subito dopo l'header) cade dentro la sfumatura di
            56px di .home-header::after qui sopra e risultava un po' sfocata/lavata appena
            aperta la home. Un po' più di spazio sopra SOLO per lei (non per "Canzoni" più

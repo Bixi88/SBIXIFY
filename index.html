@@ -106,7 +106,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Archivo+Black&display=swap" rel="stylesheet">
     <!-- Solo skin Immersive: General Sans (Fontshare, licenza libera anche commerciale),
          il sostituto free più vicino a "Circular" (font proprietario di Spotify, usato
          nella reference fornita dall'utente) - molto più vicino di Poppins (scartato: qui
@@ -962,7 +962,7 @@
         /* ================= HOME: griglia "Playlist" (fissa, 3 colonne) + colonna "Canzoni" ================= */
         /* Stessa dimensione/peso/uppercase del titolo playlist nell'header risultati
            (.results-header .rt) così le due schermate restano coerenti fra loro. */
-        .quick-eyebrow { padding:22px 24px 4px; font-size:16px; letter-spacing:.02em; text-transform:uppercase; color:var(--text-muted); font-weight:700; transform: translateZ(0); }
+        .quick-eyebrow { padding:22px 24px 4px; font-size:22px; letter-spacing:.01em; text-transform:uppercase; color:#fff; font-weight:400; font-family:'Archivo Black', sans-serif; transform: translateZ(0); }
         /* La prima label ("Playlist", subito dopo l'header) cade dentro la sfumatura di
            56px di .home-header::after qui sopra e risultava un po' sfocata/lavata appena
            aperta la home. Un po' più di spazio sopra SOLO per lei (non per "Canzoni" più
@@ -970,7 +970,7 @@
            margin negativo altrove, spinge naturalmente in basso anche tutto quello che
            segue nel flusso (griglia playlist, canzoni), niente altro da ritoccare. */
         .home-header + .quick-eyebrow { padding-top: 34px; }
-        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 20px; justify-items:center; transform: translateZ(0); }
+        .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 12px; justify-items:center; transform: translateZ(0); }
         .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }

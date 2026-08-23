@@ -2902,11 +2902,7 @@
             // consuma sempre questa e fa scattare popstate normalmente.
             window.history.pushState({ page: 'main' }, 'Main');
             
-            // Logica del back estratta in una funzione a sé: viene chiamata da
-            // 'currententrychange' (Navigation API) invece che da 'popstate' diretto - vedi
-            // il blocco navigation.addEventListener più sotto per il perché. Il contenuto
-            // resta identico a prima, solo landedState sostituisce e.state.
-            function handleBackTraverse(landedState) {
+            window.addEventListener('popstate', (e) => {
                 let handled = false;
                 // Modalità Auto: overlay più in alto di tutti (sopra la stessa Now
                 // Playing), va controllata per prima.
@@ -2958,7 +2954,7 @@
                 // aveva già effettuato il proprio history.back() atterrando su 'results'.
                 // In quel caso l'utente deve restare sulla lista canzoni.
                 const viewsSlider = document.getElementById('viewsSlider');
-                const landedPage = landedState && landedState.page;
+                const landedPage = e.state && e.state.page;
                 if (!handled && viewsSlider && viewsSlider.classList.contains('showing-results') && landedPage !== 'results') {
                     showHomeView();
                     handled = true;
@@ -2987,41 +2983,7 @@
                         window.history.pushState({ page: nowPage }, nowPage === 'results' ? 'Results' : 'Main');
                     }
                 }
-            }
-
-            // Il back di sistema (gesture o tasto) su Android/Brave, per una PWA installata
-            // in fullscreen, passa prima dalla Navigation API: se non la intercettiamo,
-            // Chrome mostra la SUA anteprima nativa della transizione mentre trascini il
-            // dito, PRIMA che handleBackTraverse possa reagire. Per una SPA a URL fissa
-            // (mai una vera pagina precedente da mostrare) quell'anteprima produce proprio
-            // i sintomi visti: uscita lampo dal fullscreen durante il gesto, Now Playing
-            // che sparisce di colpo invece di scendere con la sua animazione CSS, e
-            // comportamento incoerente da schermata a schermata.
-            //
-            // event.intercept() qui non fa lavoro proprio: serve solo a dichiarare "gestisco
-            // io questa transizione", disattivando l'anteprima nativa del sistema. La
-            // cascata vera resta in handleBackTraverse e gira su 'currententrychange', che
-            // scatta DOPO che la entry è già cambiata (stesso istante in cui prima scattava
-            // 'popstate') - i history.pushState() che il cascade fa per riarmare lo stack
-            // (toast d'uscita, sheet aperte ecc.) restano quindi sicuri, senza annidarsi
-            // dentro la dispatch di 'navigate' che genererebbe un errore del browser.
-            //
-            // Solo i 'traverse' (back/forward reali) vengono intercettati: le pushState che
-            // l'app fa da sola per aprire sheet/modali sono di tipo 'push' e passano dritte,
-            // niente cascata su quelle - esattamente come 'popstate' non scattava mai per
-            // le nostre pushState originali.
-            if ('navigation' in window) {
-                navigation.addEventListener('navigate', (event) => {
-                    if (event.navigationType === 'traverse' && event.canIntercept) {
-                        event.intercept();
-                    }
-                });
-
-                navigation.addEventListener('currententrychange', (event) => {
-                    if (event.navigationType !== 'traverse') return;
-                    handleBackTraverse(navigation.currentEntry?.getState());
-                });
-            }
+            });
 
             // Trigger forza aggiornamento al click sul pulsante
             document.getElementById('appUpdateBtn')?.addEventListener('click', async (e) => {

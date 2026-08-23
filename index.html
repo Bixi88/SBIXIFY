@@ -1932,16 +1932,22 @@
         </div>
     </div>
 
-    <!-- Modal Sleep Timer -->
+    <!-- Modal Sleep Timer: stessa sheet e stesso layout (icona/titolo/valore/slider/tre
+         azioni) del modal "Offset sincronizzazione testo" qui sotto (#lyricsOffsetModal),
+         riusando le identiche classi .lyrics-offset-* per restare graficamente identica
+         su ogni skin - cambia solo l'icona (clessidra al posto del tachimetro). -->
     <div id="sleepTimerModal" class="sleep-timer-modal">
         <div class="sleep-timer-sheet">
             <div class="sleep-timer-sheet-handle"></div>
-            <h3 class="sleep-timer-sheet-title">Timer spegnimento</h3>
-            <div class="sleep-timer-sheet-divider"></div>
-            <div class="sleep-timer-option" data-minutes="30">30 minuti</div>
-            <div class="sleep-timer-option" data-minutes="60">60 minuti</div>
-            <div class="sleep-timer-option" data-minutes="90">90 minuti</div>
-            <div class="sleep-timer-option" data-minutes="120">120 minuti</div>
+            <div class="lyrics-offset-icon"><i class="fa-solid fa-stopwatch"></i></div>
+            <h3 class="lyrics-offset-title">Timer spegnimento</h3>
+            <div id="sleepTimerValue" class="lyrics-offset-value">90 min</div>
+            <input type="range" id="sleepTimerSlider" class="lyrics-offset-slider" min="30" max="150" step="10" value="90">
+            <div class="lyrics-offset-actions">
+                <button id="sleepTimerReset" class="lyrics-offset-action">Ripristina</button>
+                <button id="sleepTimerCancel" class="lyrics-offset-action">Annulla</button>
+                <button id="sleepTimerOk" class="lyrics-offset-action lyrics-offset-action-primary">Ok</button>
+            </div>
         </div>
     </div>
 
@@ -3064,8 +3070,29 @@
                     window.history.pushState({ page: 'sleepTimer' }, 'SleepTimer');
                 }
             });
-            document.querySelectorAll('.sleep-timer-option').forEach((opt) => {
-                opt.addEventListener('click', () => setSleepTimer(parseInt(opt.dataset.minutes, 10)));
+            // Slider minutaggio: solo anteprima dell'etichetta mentre si trascina, il
+            // timer parte davvero solo con "Ok" (a differenza dello slider offset testo,
+            // qui non c'è nulla da mostrare "dal vivo" durante il trascinamento).
+            document.getElementById('sleepTimerSlider').addEventListener('input', (e) => {
+                const newMinutes = parseInt(e.target.value, 10);
+                // Vibra solo quando lo scatto cambia davvero il valore (l'evento "input"
+                // può scattare più volte sullo stesso step durante il trascinamento),
+                // altrimenti la vibrazione risulterebbe ripetuta/fastidiosa.
+                if (newMinutes !== sleepTimerSelectedMinutes) hapticFeedback();
+                sleepTimerSelectedMinutes = newMinutes;
+                updateSleepTimerUI(sleepTimerSelectedMinutes);
+            });
+            document.getElementById('sleepTimerReset').addEventListener('click', () => {
+                sleepTimerSelectedMinutes = 90;
+                const slider = document.getElementById('sleepTimerSlider');
+                if (slider) slider.value = 90;
+                updateSleepTimerUI(90);
+            });
+            document.getElementById('sleepTimerCancel').addEventListener('click', () => {
+                closeSleepTimerModal();
+            });
+            document.getElementById('sleepTimerOk').addEventListener('click', () => {
+                setSleepTimer(sleepTimerSelectedMinutes);
             });
             // Click sull'overlay (non sulla sheet) chiude, stesso pattern di #apiModal.
             document.getElementById('sleepTimerModal').addEventListener('click', (e) => {
@@ -7096,11 +7123,32 @@
         // dell'app metterebbe in pausa la riproduzione in un momento inatteso al riavvio.
         let sleepTimerHandle = null;
 
+        // Ultimo minutaggio scelto sullo slider (30-150, scatti di 10): riproposto alla
+        // prossima apertura del modal, si riparte sempre da 90 solo al primo avvio o dopo
+        // "Ripristina". Non è il timer IN CORSO (quello è sleepTimerHandle) ma solo il
+        // valore mostrato/selezionato nel modal.
+        let sleepTimerSelectedMinutes = 90;
+
         function updateSleepTimerButtonUI() {
             document.getElementById('sleepTimerBtn')?.classList.toggle('active', sleepTimerHandle !== null);
         }
 
+        // Aggiorna solo la UI del modal (etichetta minuti + riempimento bicolore dello
+        // slider), stesso identico schema di updateLyricsOffsetUI qui sopra.
+        function updateSleepTimerUI(minutes) {
+            const valueEl = document.getElementById('sleepTimerValue');
+            if (valueEl) valueEl.textContent = `${minutes} min`;
+            const slider = document.getElementById('sleepTimerSlider');
+            if (!slider) return;
+            const min = parseInt(slider.min, 10), max = parseInt(slider.max, 10);
+            const pct = ((minutes - min) / (max - min)) * 100;
+            slider.style.background = `linear-gradient(to right, var(--hair, rgba(243,239,230,0.18)) 0%, var(--hair, rgba(243,239,230,0.18)) ${pct}%, var(--accent) ${pct}%, var(--accent) 100%)`;
+        }
+
         function openSleepTimerModal() {
+            const slider = document.getElementById('sleepTimerSlider');
+            if (slider) slider.value = sleepTimerSelectedMinutes;
+            updateSleepTimerUI(sleepTimerSelectedMinutes);
             document.getElementById('sleepTimerModal')?.classList.add('active');
         }
 

@@ -1728,7 +1728,7 @@
                         <div id="artistsItCol" class="artists-col"></div>
                     </div>
                     <div id="artistsGlobalSection" class="hidden">
-                        <div class="quick-eyebrow">Top artisti globali</div>
+                        <div class="quick-eyebrow">Top artisti globali (USA)</div>
                         <div id="artistsGlobalCol" class="artists-col"></div>
                     </div>
 
@@ -5267,7 +5267,6 @@
         // Risultati) resta quella che l'utente aveva prima, invariata. L'etichetta in alto
         // nella sheet userà la playlist di provenienza salvata col brano (se c'era, sarà
         // tappabile per riaprirla); se il brano veniva da una ricerca singola, l'etichetta
-        // resta il generico "In Riproduzione" senza nulla sotto.
         // --- HOME: classifiche YouTube Music + top artisti (IT + globale) ---
         // Dati presi da un Worker Cloudflare dedicato (separato da quello di ricerca),
         // che interroga direttamente l'endpoint interno di YouTube Music - vedi il file
@@ -5275,12 +5274,21 @@
         // distribuzione. Nessuna chiave API personale coinvolta. Cache in localStorage
         // per 6 ore così l'app resta veloce anche se il Worker è lento/irraggiungibile.
         //
+        // Le 3 card in cima ("Classifiche") sono PLAYLIST (Trending 20, Video più visti
+        // del giorno, Top 100 video), non singoli brani: il contenuto vero e proprio
+        // viene letto solo quando l'utente ne apre una (endpoint /playlist), non subito
+        // in home, per non appesantire il caricamento iniziale.
+        //
+        // "Globale" non esiste come classifica vera su YouTube Music (solo per singolo
+        // paese): come compromesso usiamo la classifica USA, etichettata di conseguenza.
+        //
         // IMPORTANTE: sostituisci il valore qui sotto con l'URL del TUO Worker una volta
         // distribuito, altrimenti questa sezione resta vuota (fallisce in silenzio,
         // senza mostrare errori nè bloccare il resto della home).
         const CHARTS_WORKER_URL = 'https://sbixifycharts.bix20252025.workers.dev';
+        const CHARTS_GLOBAL_GL = 'US'; // stand-in per "globale", vedi nota sopra
 
-        const CHARTS_CACHE_KEY = 'sbixify_charts_cache_v1';
+        const CHARTS_CACHE_KEY = 'sbixify_charts_cache_v2';
         const CHARTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ore
 
         function loadChartsCache() {
@@ -5295,17 +5303,17 @@
             try { localStorage.setItem(CHARTS_CACHE_KEY, JSON.stringify(obj)); } catch { /* ignora */ }
         }
 
-        async function fetchChartsFor(gl) {
+        async function chartsWorkerFetch(path) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 10000);
             try {
-                const res = await fetch(`${CHARTS_WORKER_URL}/charts?gl=${gl}`, { signal: controller.signal });
+                const res = await fetch(`${CHARTS_WORKER_URL}${path}`, { signal: controller.signal });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-                return data; // { trending:[...], videos:[...], artists:[...] }
+                return data;
             } catch (err) {
-                console.warn(`Classifiche (${gl}) non disponibili:`, err.message || err);
+                console.warn(`Richiesta classifiche fallita (${path}):`, err.message || err);
                 return null;
             } finally {
                 clearTimeout(timer);
@@ -5317,85 +5325,91 @@
             const isFresh = cache && (Date.now() - cache.ts) < CHARTS_CACHE_TTL_MS;
 
             if (isFresh) {
-                renderChartsSection(cache.it);
+                renderChartsSection(cache.it?.charts);
                 renderArtistsSection('artistsItSection', 'artistsItCol', cache.it?.artists);
-                renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', cache.zz?.artists);
+                renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', cache.global?.artists);
                 return;
             }
 
-            const [it, zz] = await Promise.all([fetchChartsFor('IT'), fetchChartsFor('ZZ')]);
+            const [it, global] = await Promise.all([
+                chartsWorkerFetch('/charts?gl=IT'),
+                chartsWorkerFetch(`/charts?gl=${CHARTS_GLOBAL_GL}`),
+            ]);
 
-            renderChartsSection(it);
+            renderChartsSection(it?.charts);
             renderArtistsSection('artistsItSection', 'artistsItCol', it?.artists);
-            renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', zz?.artists);
+            renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', global?.artists);
 
-            if (it || zz) saveChartsCache({ ts: Date.now(), it, zz });
+            if (it || global) saveChartsCache({ ts: Date.now(), it, global });
         }
 
-        // Le 3 card orizzontali in cima: brani di tendenza, video più visti, (di
-        // nuovo) brani/artisti a seconda di cosa il Worker è riuscito a trovare -
-        // ognuna apre la lista completa di quella corsia nella vista Risultati.
-        function renderChartsSection(chartsData) {
+        // Le card orizzontali in cima: una per ciascuna playlist di classifica
+        // trovata (Trending 20, Video più visti del giorno, Top 100 video...).
+        // Il contenuto (le canzoni) viene letto solo al tap, non qui.
+        function renderChartsSection(charts) {
             const section = document.getElementById('chartsSection');
             const row = document.getElementById('chartsRow');
             if (!section || !row) return;
 
-            const shelves = [
-                { key: 'trending', label: 'Brani di tendenza · Italia', data: chartsData?.trending },
-                { key: 'videos', label: 'Video più visti · Italia', data: chartsData?.videos },
-                { key: 'artists', label: 'Top artisti · Italia', data: chartsData?.artists },
-            ].filter(s => Array.isArray(s.data) && s.data.length > 0);
-
-            if (shelves.length === 0) {
+            if (!Array.isArray(charts) || charts.length === 0) {
                 section.classList.add('hidden');
                 row.innerHTML = '';
                 return;
             }
 
             section.classList.remove('hidden');
-            row.innerHTML = shelves.map((s, i) => `
-                <div class="chart-card" data-shelf-index="${i}">
-                    <div class="chart-card-thumb" style="${s.data[0].thumbnail ? `background-image:url('${s.data[0].thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
-                    <div class="chart-card-label">${escapeHtml(s.label)}</div>
+            row.innerHTML = charts.map((c, i) => `
+                <div class="chart-card" data-index="${i}">
+                    <div class="chart-card-thumb" style="${c.thumbnail ? `background-image:url('${c.thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
+                    <div class="chart-card-label">${escapeHtml(c.title)}</div>
                 </div>
             `).join('');
 
             row.querySelectorAll('.chart-card').forEach(card => {
-                const idx = parseInt(card.dataset.shelfIndex, 10);
-                card.addEventListener('click', () => openChartShelf(shelves[idx]));
+                const idx = parseInt(card.dataset.index, 10);
+                card.addEventListener('click', () => openChartPlaylist(charts[idx]));
             });
         }
 
-        // Apre la vista Risultati con l'elenco completo di una corsia di classifica
-        // (brani/video: lista riproducibile; artisti: lista cliccabile che avvia una
-        // ricerca per nome, non essendoci qui una vera "pagina artista" nell'app).
-        function openChartShelf(shelf) {
+        // Apre una playlist di classifica: legge il suo contenuto vero dal Worker
+        // (endpoint /playlist) al momento del tap, e lo mostra nella vista Risultati
+        // come una tracklist riproducibile normale.
+        async function openChartPlaylist(chart) {
+            if (!chart || !chart.browseId) return;
             hapticFeedback();
-            if (shelf.key === 'artists') {
-                // Mostriamo la lista artisti stessa dentro la vista Risultati, riusando
-                // le righe .artist-row invece della tracklist normale.
-                showResultsView(shelf.label);
-                document.getElementById('trackList').innerHTML = '';
-                const list = document.createElement('div');
-                list.className = 'artists-col';
-                list.style.padding = '8px 4px';
-                list.innerHTML = shelf.data.map((a, i) => artistRowHtml(a, i)).join('');
-                document.getElementById('trackList').appendChild(list);
-                bindArtistRows(list, shelf.data);
+
+            currentListSource = 'youtube';
+            showResultsView(chart.title);
+            appState.tracks = [];
+            appState.currentIndex = -1;
+            currentLoadedKey = 'chart:' + chart.browseId;
+            currentLoadedTitle = chart.title;
+            document.getElementById('trackList').innerHTML = '';
+            const resultsStatusText = document.getElementById('resultsStatusText');
+            if (resultsStatusText) {
+                resultsStatusText.textContent = 'Caricamento...';
+                resultsStatusText.classList.remove('hidden');
+            }
+
+            const data = await chartsWorkerFetch(`/playlist?browseId=${encodeURIComponent(chart.browseId)}&gl=IT`);
+            const items = (data?.items || []).filter(it => it.videoId);
+
+            if (resultsStatusText) resultsStatusText.classList.add('hidden');
+
+            if (items.length === 0) {
+                if (resultsStatusText) {
+                    resultsStatusText.textContent = 'Impossibile caricare questa classifica al momento.';
+                    resultsStatusText.classList.remove('hidden');
+                }
                 return;
             }
 
-            currentListSource = 'youtube';
-            showResultsView(shelf.label);
-            appState.tracks = shelf.data.map(it => ({
+            appState.tracks = items.map(it => ({
                 id: it.videoId,
                 title: it.title,
                 channel: it.subtitle || '',
                 thumbnail: it.thumbnail,
-            })).filter(t => t.id);
-            appState.currentIndex = -1;
-            currentLoadedKey = 'chart:' + shelf.key;
-            currentLoadedTitle = shelf.label;
+            }));
             renderTracklist(0);
         }
 

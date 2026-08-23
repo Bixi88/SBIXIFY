@@ -68,6 +68,12 @@
             --immersive-lyrics-bg: #46464F;
             --immersive-lyrics-text: #ffffff;
             --immersive-lyrics-muted: #9A98A0;
+            /* Sfondo chiaro (quasi bianco, appena tinto dal colore dominante del brano) e
+               colore scuro in tinta per icona/testo della barra di ricerca in home - vedi
+               updateImmersiveColorFromArtwork. Niente color-mix() (vedi nota già presente
+               sul gradiente: non supportato da alcune WebView Android), qui il mix è già
+               fatto in JS con numeri semplici. */
+            --immersive-search-bg: #F3EFE6;
         }
 
         html, body {
@@ -754,19 +760,14 @@
             text-align: center;
             font-size: 15px;
             font-weight: 600;
-            color: var(--text-main);
-            background: var(--bg-input);
+            color: var(--immersive-accent-text);
+            background: var(--immersive-accent);
             border: none;
             border-radius: 999px;
-            padding: 14px 4px;
+            padding: 10px 4px;
             cursor: pointer;
         }
         .lyrics-offset-action:active { opacity: 0.7; }
-        .lyrics-offset-action-primary {
-            background: var(--accent);
-            color: var(--bg-main);
-            font-weight: 700;
-        }
 
         #miniPlayer, #miniPlayer *, #swipeTitleContainer, #swipeTitleContainer * {
             -webkit-user-drag: none;
@@ -921,14 +922,14 @@
         .update-btn { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); color:var(--text-main); flex:0 0 auto; margin-left:auto; }
         .update-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--accent); border:1px solid var(--bg-main); }
 
-        .search-pill { margin-top:12px; background:var(--text-main); border-radius:999px; display:flex; align-items:center; gap:10px; padding:10px 14px; position:relative; }
-        .search-pill .mag-btn { color:#4a4550; font-size:15px; flex:0 0 auto; background:none; border:none; padding:2px; display:flex; -webkit-text-stroke: 0.5px currentColor; text-stroke: 0.5px currentColor; }
-        #searchInput { flex:1; border:none !important; outline:none !important; background:transparent !important; font-family:'Inter',sans-serif; font-size:13.5px !important; font-weight:500; color:#1c1a20 !important; width:auto !important; opacity:1 !important; padding:0 !important; height:auto !important; -webkit-appearance:none; appearance:none; }
+        .search-pill { margin-top:12px; background:var(--immersive-search-bg); border-radius:999px; display:flex; align-items:center; gap:10px; padding:10px 14px; position:relative; }
+        .search-pill .mag-btn { color:var(--immersive-color); font-size:15px; flex:0 0 auto; background:none; border:none; padding:2px; display:flex; -webkit-text-stroke: 0.5px currentColor; text-stroke: 0.5px currentColor; }
+        #searchInput { flex:1; border:none !important; outline:none !important; background:transparent !important; font-family:'Inter',sans-serif; font-size:13.5px !important; font-weight:500; color:var(--immersive-color) !important; width:auto !important; opacity:1 !important; padding:0 !important; height:auto !important; -webkit-appearance:none; appearance:none; }
         #searchInput::-webkit-search-decoration,
         #searchInput::-webkit-search-cancel-button,
         #searchInput::-webkit-search-results-button,
         #searchInput::-webkit-search-results-decoration { display:none; -webkit-appearance:none; }
-        #searchInput::placeholder { color:#8b8794; }
+        #searchInput::placeholder { color:var(--immersive-color); opacity:0.55; }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Stesso discorso dell'header home: primo figlio di #resultsView, sticky in cima,
            sfondo/dissolvenza via pseudo-elementi propri (vedi ::before/::after sotto). */
@@ -1951,7 +1952,7 @@
             <div class="lyrics-offset-actions">
                 <button id="sleepTimerReset" class="lyrics-offset-action">Ripristina</button>
                 <button id="sleepTimerCancel" class="lyrics-offset-action">Annulla</button>
-                <button id="sleepTimerOk" class="lyrics-offset-action lyrics-offset-action-primary">Ok</button>
+                <button id="sleepTimerOk" class="lyrics-offset-action">Ok</button>
             </div>
         </div>
     </div>
@@ -2002,7 +2003,7 @@
             <div class="lyrics-offset-actions">
                 <button id="lyricsOffsetReset" class="lyrics-offset-action">Ripristina</button>
                 <button id="lyricsOffsetCancel" class="lyrics-offset-action">Annulla</button>
-                <button id="lyricsOffsetOk" class="lyrics-offset-action lyrics-offset-action-primary">Ok</button>
+                <button id="lyricsOffsetOk" class="lyrics-offset-action">Ok</button>
             </div>
         </div>
     </div>
@@ -2370,6 +2371,13 @@
                 // una volta sola prima del ramo perché non cambia più tra i due casi.
                 root.setProperty('--immersive-lyrics-bg', `rgb(${r},${g},${b})`);
                 root.setProperty('--immersive-lyrics-text', '#ffffff');
+                // Barra di ricerca in home: sfondo quasi bianco ma tinto (10% del colore
+                // dominante, 90% bianco) - resta sempre chiaro e leggibile qualunque sia il
+                // brano, ma segue comunque la tonalità dell'artwork invece di un bianco
+                // fisso piatto. Icona/testo riusano semplicemente --immersive-color (già
+                // scuro per definizione, essendo lo sfondo pieno dell'app), così restano
+                // in tinta senza bisogno di un'altra variabile dedicata.
+                root.setProperty('--immersive-search-bg', `rgb(${Math.round(r * 0.1 + 255 * 0.9)},${Math.round(g * 0.1 + 255 * 0.9)},${Math.round(b * 0.1 + 255 * 0.9)})`);
                 // Testo non cantato: bianco "affondato" verso lo sfondo scuro reale del
                 // brano (r,g,b sopra) invece di un grigio neutro fisso uguale su ogni
                 // copertina - così sembra letteralmente più sullo sfondo, coerente con la

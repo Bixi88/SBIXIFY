@@ -696,7 +696,7 @@
             font-weight: 800;
             line-height: 1.22;
             color: var(--text-main);
-            text-align: left;
+            text-align: center;
             margin: 0 0 20px;
         }
         .lyrics-offset-value {
@@ -746,20 +746,25 @@
         }
         .lyrics-offset-actions {
             display: flex;
-            gap: 28px;
+            gap: 10px;
             padding-bottom: 2px;
         }
         .lyrics-offset-action {
+            flex: 1;
+            text-align: center;
             font-size: 15px;
             font-weight: 600;
             color: var(--text-main);
-            opacity: 0.7;
-            padding: 6px 0;
+            background: var(--bg-input);
+            border: none;
+            border-radius: 999px;
+            padding: 14px 4px;
+            cursor: pointer;
         }
-        .lyrics-offset-action:active { opacity: 1; }
+        .lyrics-offset-action:active { opacity: 0.7; }
         .lyrics-offset-action-primary {
-            color: var(--accent);
-            opacity: 1;
+            background: var(--accent);
+            color: var(--bg-main);
             font-weight: 700;
         }
 

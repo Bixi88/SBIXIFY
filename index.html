@@ -999,6 +999,26 @@
         }
         .home-track-row.show-delete .track-row-delete { opacity: 1; transform: scale(1); pointer-events: auto; }
         .home-track-row.show-delete .track-thumb-wrap { animation: qcardShake 0.3s ease; }
+
+        /* ================= HOME: classifiche YouTube Music + top artisti ================= */
+        .charts-row { display:flex; gap:12px; padding:10px 24px 8px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+        .charts-row::-webkit-scrollbar { display:none; }
+        .chart-card { flex:0 0 auto; width:150px; border-radius:16px; overflow:hidden; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; background:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); }
+        .chart-card:active { transform:scale(0.96); }
+        .chart-card .chart-card-thumb { width:100%; aspect-ratio:1/1; background-size:cover; background-position:center; background-color:var(--bg-input); }
+        .chart-card .chart-card-label { padding:9px 10px 11px; font-size:12.5px; font-weight:700; line-height:1.25; color:var(--text-main); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .artists-col { padding:2px 24px 8px; }
+        .artist-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+        .artist-row:active { opacity:0.8; }
+        .artist-row:not(:last-child)::after { content:''; position:absolute; left:66px; right:0; bottom:0; height:1px; background:rgba(255,255,255,0.08); }
+        .artist-row .artist-rank { width:22px; flex-shrink:0; text-align:center; font-size:16px; font-weight:800; color:var(--text-muted); }
+        .artist-row .artist-thumb { width:52px; height:52px; border-radius:50%; flex-shrink:0; background-size:cover; background-position:center; background-color:var(--bg-input); }
+        .artist-row .artist-meta { flex:1; min-width:0; }
+        .artist-row .artist-meta .a-name { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-main); }
+        .artist-row .artist-meta .a-sub { font-size:12.5px; color:var(--text-muted); font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #chartsSection, #artistsItSection, #artistsGlobalSection { display:none; }
+        #chartsSection.hidden, #artistsItSection.hidden, #artistsGlobalSection.hidden { display:none; }
+        #chartsSection:not(.hidden), #artistsItSection:not(.hidden), #artistsGlobalSection:not(.hidden) { display:block; }
         .qcard.latest .circle { box-shadow:0 0 0 2px var(--accent), 0 10px 22px -8px rgba(0,0,0,.5); }
         .qcard.latest .name { color:var(--accent); }
         .qcard .name { font-size:12.5px; font-weight:600; text-align:center; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; color:var(--text-main); }
@@ -1697,6 +1717,21 @@
                         <div class="quick-eyebrow">Canzoni</div>
                         <div id="recentTracksCol" class="tracks-col"></div>
                     </div>
+
+                    <!-- Classifiche YouTube Music + top artisti (IT e globale) -->
+                    <div id="chartsSection" class="hidden">
+                        <div class="quick-eyebrow">Classifiche</div>
+                        <div id="chartsRow" class="charts-row"></div>
+                    </div>
+                    <div id="artistsItSection" class="hidden">
+                        <div class="quick-eyebrow">Top artisti Italia</div>
+                        <div id="artistsItCol" class="artists-col"></div>
+                    </div>
+                    <div id="artistsGlobalSection" class="hidden">
+                        <div class="quick-eyebrow">Top artisti globali</div>
+                        <div id="artistsGlobalCol" class="artists-col"></div>
+                    </div>
+
                     <div id="emptyHome" class="empty-home">
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <p>Usa la barra di ricerca in alto per cercare brani, oppure incolla il link di una playlist Spotify.<br>Le tue ultime playlist e i brani ascoltati appariranno qui.</p>
@@ -2890,6 +2925,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             renderRecentHome();
             renderRecentTracksHome();
+            loadChartsAndArtists();
             restoreLastPlayback();
             updateRepeatButtonUI();
 
@@ -5232,6 +5268,182 @@
         // nella sheet userà la playlist di provenienza salvata col brano (se c'era, sarà
         // tappabile per riaprirla); se il brano veniva da una ricerca singola, l'etichetta
         // resta il generico "In Riproduzione" senza nulla sotto.
+        // --- HOME: classifiche YouTube Music + top artisti (IT + globale) ---
+        // Dati presi da un Worker Cloudflare dedicato (separato da quello di ricerca),
+        // che interroga direttamente l'endpoint interno di YouTube Music - vedi il file
+        // sbixify-charts-worker.js allegato per il codice del Worker e le istruzioni di
+        // distribuzione. Nessuna chiave API personale coinvolta. Cache in localStorage
+        // per 6 ore così l'app resta veloce anche se il Worker è lento/irraggiungibile.
+        //
+        // IMPORTANTE: sostituisci il valore qui sotto con l'URL del TUO Worker una volta
+        // distribuito, altrimenti questa sezione resta vuota (fallisce in silenzio,
+        // senza mostrare errori nè bloccare il resto della home).
+        const CHARTS_WORKER_URL = 'https://sbixifycharts.bix20252025.workers.dev';
+
+        const CHARTS_CACHE_KEY = 'sbixify_charts_cache_v1';
+        const CHARTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ore
+
+        function loadChartsCache() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(CHARTS_CACHE_KEY));
+                if (!raw || typeof raw !== 'object') return null;
+                return raw;
+            } catch { return null; }
+        }
+
+        function saveChartsCache(obj) {
+            try { localStorage.setItem(CHARTS_CACHE_KEY, JSON.stringify(obj)); } catch { /* ignora */ }
+        }
+
+        async function fetchChartsFor(gl) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
+            try {
+                const res = await fetch(`${CHARTS_WORKER_URL}/charts?gl=${gl}`, { signal: controller.signal });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                return data; // { trending:[...], videos:[...], artists:[...] }
+            } catch (err) {
+                console.warn(`Classifiche (${gl}) non disponibili:`, err.message || err);
+                return null;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function loadChartsAndArtists() {
+            const cache = loadChartsCache();
+            const isFresh = cache && (Date.now() - cache.ts) < CHARTS_CACHE_TTL_MS;
+
+            if (isFresh) {
+                renderChartsSection(cache.it);
+                renderArtistsSection('artistsItSection', 'artistsItCol', cache.it?.artists);
+                renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', cache.zz?.artists);
+                return;
+            }
+
+            const [it, zz] = await Promise.all([fetchChartsFor('IT'), fetchChartsFor('ZZ')]);
+
+            renderChartsSection(it);
+            renderArtistsSection('artistsItSection', 'artistsItCol', it?.artists);
+            renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', zz?.artists);
+
+            if (it || zz) saveChartsCache({ ts: Date.now(), it, zz });
+        }
+
+        // Le 3 card orizzontali in cima: brani di tendenza, video più visti, (di
+        // nuovo) brani/artisti a seconda di cosa il Worker è riuscito a trovare -
+        // ognuna apre la lista completa di quella corsia nella vista Risultati.
+        function renderChartsSection(chartsData) {
+            const section = document.getElementById('chartsSection');
+            const row = document.getElementById('chartsRow');
+            if (!section || !row) return;
+
+            const shelves = [
+                { key: 'trending', label: 'Brani di tendenza · Italia', data: chartsData?.trending },
+                { key: 'videos', label: 'Video più visti · Italia', data: chartsData?.videos },
+                { key: 'artists', label: 'Top artisti · Italia', data: chartsData?.artists },
+            ].filter(s => Array.isArray(s.data) && s.data.length > 0);
+
+            if (shelves.length === 0) {
+                section.classList.add('hidden');
+                row.innerHTML = '';
+                return;
+            }
+
+            section.classList.remove('hidden');
+            row.innerHTML = shelves.map((s, i) => `
+                <div class="chart-card" data-shelf-index="${i}">
+                    <div class="chart-card-thumb" style="${s.data[0].thumbnail ? `background-image:url('${s.data[0].thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
+                    <div class="chart-card-label">${escapeHtml(s.label)}</div>
+                </div>
+            `).join('');
+
+            row.querySelectorAll('.chart-card').forEach(card => {
+                const idx = parseInt(card.dataset.shelfIndex, 10);
+                card.addEventListener('click', () => openChartShelf(shelves[idx]));
+            });
+        }
+
+        // Apre la vista Risultati con l'elenco completo di una corsia di classifica
+        // (brani/video: lista riproducibile; artisti: lista cliccabile che avvia una
+        // ricerca per nome, non essendoci qui una vera "pagina artista" nell'app).
+        function openChartShelf(shelf) {
+            hapticFeedback();
+            if (shelf.key === 'artists') {
+                // Mostriamo la lista artisti stessa dentro la vista Risultati, riusando
+                // le righe .artist-row invece della tracklist normale.
+                showResultsView(shelf.label);
+                document.getElementById('trackList').innerHTML = '';
+                const list = document.createElement('div');
+                list.className = 'artists-col';
+                list.style.padding = '8px 4px';
+                list.innerHTML = shelf.data.map((a, i) => artistRowHtml(a, i)).join('');
+                document.getElementById('trackList').appendChild(list);
+                bindArtistRows(list, shelf.data);
+                return;
+            }
+
+            currentListSource = 'youtube';
+            showResultsView(shelf.label);
+            appState.tracks = shelf.data.map(it => ({
+                id: it.videoId,
+                title: it.title,
+                channel: it.subtitle || '',
+                thumbnail: it.thumbnail,
+            })).filter(t => t.id);
+            appState.currentIndex = -1;
+            currentLoadedKey = 'chart:' + shelf.key;
+            currentLoadedTitle = shelf.label;
+            renderTracklist(0);
+        }
+
+        function artistRowHtml(a, i) {
+            return `
+                <div class="artist-row" data-index="${i}">
+                    <div class="artist-rank">${i + 1}</div>
+                    <div class="artist-thumb" style="${a.thumbnail ? `background-image:url('${a.thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
+                    <div class="artist-meta">
+                        <div class="a-name">${escapeHtml(a.title)}</div>
+                        <div class="a-sub">${escapeHtml(a.subtitle || '')}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function bindArtistRows(container, artists) {
+            container.querySelectorAll('.artist-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const idx = parseInt(row.dataset.index, 10);
+                    const artist = artists[idx];
+                    if (!artist || !artist.title) return;
+                    hapticFeedback();
+                    searchInput.value = artist.title;
+                    performSearch();
+                });
+            });
+        }
+
+        // Le due liste "Top artisti" (Italia / globale) mostrate in home, top 3 con
+        // iscritti se il Worker li ha trovati nel sottotitolo.
+        function renderArtistsSection(sectionId, colId, artists) {
+            const section = document.getElementById(sectionId);
+            const col = document.getElementById(colId);
+            if (!section || !col) return;
+
+            const top3 = Array.isArray(artists) ? artists.slice(0, 3) : [];
+            if (top3.length === 0) {
+                section.classList.add('hidden');
+                col.innerHTML = '';
+                return;
+            }
+
+            section.classList.remove('hidden');
+            col.innerHTML = top3.map((a, i) => artistRowHtml(a, i)).join('');
+            bindArtistRows(col, top3);
+        }
+
         function openRecentTrack(item) {
             if (!item || !item.id) return;
 

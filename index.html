@@ -938,6 +938,33 @@
         #searchInput::-webkit-search-results-button,
         #searchInput::-webkit-search-results-decoration { display:none; -webkit-appearance:none; }
         #searchInput::placeholder { color:var(--immersive-color); opacity:0.55; }
+
+        /* ================= SUGGERIMENTI LIVE (autocomplete via Deezer) =================
+           Dropdown che compare mentre si digita nella barra di ricerca, prima ancora di
+           premere Invio: mischia artisti e brani trovati su Deezer (endpoint pubblico,
+           nessuna chiave, nessuna quota) per dare un riscontro immediato "a schermata
+           intera" come su YouTube Music, SENZA però interrogare ad ogni tasto il Worker
+           Cloudflare che risolve i video YouTube (quello resta usato una sola volta,
+           solo quando l'utente conferma la ricerca o tocca un suggerimento). Ancorato al
+           search-pill (già position:relative) invece che all'header, così segue la
+           pillola indipendentemente da eventuali margini/padding dell'header. */
+        .search-suggestions {
+            position:absolute; left:0; right:0; top:calc(100% + 8px);
+            background:var(--bg-card, var(--bg-input)); border-radius:20px;
+            box-shadow:0 16px 34px -12px rgba(0,0,0,.6); overflow-y:auto; -webkit-overflow-scrolling:touch;
+            max-height:56vh; z-index:60; padding:6px;
+        }
+        .search-suggestions.hidden { display:none; }
+        .suggest-row { display:flex; align-items:center; gap:12px; padding:8px 8px; border-radius:14px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+        .suggest-row:active { background:rgba(255,255,255,0.07); }
+        .suggest-row .suggest-thumb { width:38px; height:38px; flex-shrink:0; background-size:cover; background-position:center; background-color:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:13px; }
+        .suggest-row.is-artist .suggest-thumb { border-radius:50%; }
+        .suggest-row.is-track .suggest-thumb { border-radius:8px; }
+        .suggest-row .suggest-meta { flex:1; min-width:0; }
+        .suggest-row .suggest-title { font-size:13.5px; font-weight:700; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .suggest-row .suggest-sub { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .suggest-row .suggest-icon { width:14px; text-align:center; color:var(--text-muted); font-size:11px; flex-shrink:0; opacity:0.7; }
+        .suggest-divider { margin:2px 8px 4px; padding-top:4px; font-size:10.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Stesso discorso dell'header home: primo figlio di #resultsView, sticky in cima,
            sfondo/dissolvenza via pseudo-elementi propri (vedi ::before/::after sotto). */
@@ -1011,16 +1038,21 @@
         /* ================= HOME: classifiche YouTube Music + top artisti ================= */
         /* Sempre esattamente 3 card fisse (vedi commento su renderChartsSection/
            openChartPlaylist: "le classifiche restano le 3 card fisse in home", mai un
-           elenco che cresce) - niente da scorrere, quindi lo scroll orizzontale nativo
-           (overflow-x:auto) è stato tolto: bastava un tocco anche solo un po' diagonale
-           su quella zona per farla scivolare lateralmente e restare storta, dando
-           l'impressione di una riga "mobile" anche senza volerlo trascinare davvero.
-           overflow:hidden mantiene lo stesso taglio visivo della terza card (già a filo
-           bordo per via della larghezza fissa delle card) ma la riga ora resta ferma. */
-        .charts-row { display:flex; gap:16px; padding:10px 24px 8px; overflow-x:hidden; touch-action:pan-y; }
-        .chart-card { flex:0 0 auto; width:104px; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
+           elenco che cresce) - niente da scorrere, quindi niente scroll orizzontale:
+           bastava un tocco anche solo un po' diagonale su quella zona per farla scivolare
+           lateralmente e restare storta, dando l'impressione di una riga "mobile" anche
+           senza volerlo trascinare davvero.
+           PRIMA: card a larghezza fissa (104px) dentro un flex con overflow-x:hidden. Su
+           schermi più stretti di ~392px (104*3 + i due gap da 16px + i 48px di padding
+           laterale) le 3 card non ci stavano più: la terza restava tagliata a filo del
+           bordo destro invece di restringersi, e l'intera riga appariva spostata a
+           sinistra anziché centrata. Con un grid a 3 colonne UGUALI le card si
+           restringono/allargano insieme per riempire esattamente la larghezza
+           disponibile: sempre 3 intere, sempre centrate, su qualunque schermo. */
+        .charts-row { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; padding:10px 24px 8px; touch-action:pan-y; }
+        .chart-card { width:100%; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
         .chart-card:active .chart-card-thumb { transform:scale(0.96); }
-        .chart-card .chart-card-thumb { width:104px; height:104px; border-radius:50%; background-size:cover; background-position:center; background-color:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); flex-shrink:0; }
+        .chart-card .chart-card-thumb { width:100%; aspect-ratio:1/1; border-radius:50%; background-size:cover; background-position:center; background-color:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); }
         .chart-card .chart-card-label { margin-top:9px; width:100%; text-align:center; font-size:12.5px; font-weight:700; line-height:1.25; color:var(--text-main); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
         .artists-col { padding:2px 24px 8px; }
         .artist-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
@@ -1704,6 +1736,8 @@
                         <button id="pwaInstallBtn" class="hidden absolute top-2 right-2 text-[#1a1305] font-bold text-[10px] px-3 py-1.5 rounded-full active:scale-95 transition-transform custom-bg-accent z-50">
                             <i class="fa-solid fa-download mr-1"></i> Installa
                         </button>
+
+                        <div id="searchSuggestions" class="search-suggestions hidden"></div>
                     </div>
 
                     <div class="quick-eyebrow">Playlist</div>
@@ -3065,6 +3099,7 @@
             // La stessa barra di ricerca serve sia per cercare su YouTube (testo libero)
             // sia per importare una playlist Spotify (se viene incollato un link/URI playlist).
             function handleSearchSubmit() {
+                hideSearchSuggestions();
                 const value = searchInput.value.trim();
                 if (!value) { return; }
                 if (isSpotifyPlaylistLink(value) || isSpotifyArtistLink(value)) {
@@ -3074,6 +3109,146 @@
                     performSearch(false);
                 }
             }
+
+            // ============== SUGGERIMENTI LIVE MENTRE SI DIGITA (via Deezer) ==============
+            // Prima ogni ricerca (anche solo per vedere suggerimenti) passava dal Worker
+            // Cloudflare che risolve i video YouTube: andava bene per la ricerca vera e
+            // propria (un tap/Invio = una chiamata), ma sarebbe stato sprecato per un
+            // riscontro "a ogni tasto premuto" come quello di YouTube Music (vedi video di
+            // riferimento) - decine di chiamate al Worker solo per digitare una parola.
+            // Deezer (api.deezer.com) è pubblica, gratuita e senza chiave: la usiamo SOLO
+            // per questi suggerimenti "leggeri" (nome artista + poche canzoni), tramite lo
+            // stesso jsonpRequest già usato altrove nell'app per aggirare il CORS di
+            // Deezer. Il Worker YouTube resta toccato una volta sola: solo quando l'utente
+            // conferma con Invio/lente o tocca uno dei suggerimenti qui sotto.
+            const searchSuggestionsEl = document.getElementById('searchSuggestions');
+            let suggestDebounceTimer = null;
+            let suggestRequestToken = 0;
+            // Cache in memoria (si azzera ad ogni ricarica pagina, niente storage): stessa
+            // idea della cache ricerche YouTube, ma qui serve solo a non richiamare Deezer
+            // due volte per lo stesso testo mentre l'utente cancella e riscrive.
+            const suggestCache = new Map();
+
+            function hideSearchSuggestions() {
+                if (!searchSuggestionsEl) return;
+                searchSuggestionsEl.classList.add('hidden');
+                searchSuggestionsEl.innerHTML = '';
+            }
+
+            async function fetchDeezerSuggestions(query) {
+                const [artistRes, trackRes] = await Promise.all([
+                    jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=4`, 6000).catch(() => null),
+                    jsonpRequest(`https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=6`, 6000).catch(() => null)
+                ]);
+                return {
+                    artists: (artistRes && Array.isArray(artistRes.data)) ? artistRes.data : [],
+                    tracks: (trackRes && Array.isArray(trackRes.data)) ? trackRes.data : []
+                };
+            }
+
+            function renderSearchSuggestions(artists, tracks) {
+                if (!searchSuggestionsEl) return;
+                if (!artists.length && !tracks.length) { hideSearchSuggestions(); return; }
+
+                const rowsHtml = [];
+                artists.forEach((a, i) => {
+                    const cover = a.picture_medium || a.picture_small || a.picture_big || '';
+                    rowsHtml.push(`
+                        <div class="suggest-row is-artist" data-kind="artist" data-idx="${i}">
+                            <div class="suggest-thumb" style="${cover ? `background-image:url('${cover.replace(/'/g, "\\'")}')` : ''}">${cover ? '' : '<i class="fa-solid fa-user"></i>'}</div>
+                            <div class="suggest-meta">
+                                <div class="suggest-title">${escapeHtml(cleanSpotifyArtistName(a.name))}</div>
+                                <div class="suggest-sub">Artista</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right suggest-icon"></i>
+                        </div>
+                    `);
+                });
+                tracks.forEach((t, i) => {
+                    const cover = (t.album && (t.album.cover_medium || t.album.cover_small || t.album.cover_big)) || '';
+                    const artistName = (t.artist && t.artist.name) || '';
+                    rowsHtml.push(`
+                        <div class="suggest-row is-track" data-kind="track" data-idx="${i}">
+                            <div class="suggest-thumb" style="${cover ? `background-image:url('${cover.replace(/'/g, "\\'")}')` : ''}">${cover ? '' : '<i class="fa-solid fa-music"></i>'}</div>
+                            <div class="suggest-meta">
+                                <div class="suggest-title">${escapeHtml(t.title)}</div>
+                                <div class="suggest-sub">${escapeHtml(artistName)}</div>
+                            </div>
+                            <i class="fa-solid fa-magnifying-glass suggest-icon"></i>
+                        </div>
+                    `);
+                });
+
+                searchSuggestionsEl.innerHTML = rowsHtml.join('');
+                searchSuggestionsEl.classList.remove('hidden');
+
+                searchSuggestionsEl.querySelectorAll('.suggest-row.is-artist').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const artist = artists[parseInt(row.dataset.idx, 10)];
+                        if (!artist) return;
+                        hapticFeedback();
+                        hideSearchSuggestions();
+                        searchInput.blur();
+                        searchInput.value = cleanSpotifyArtistName(artist.name);
+                        searchArtistPlaylist(artist);
+                    });
+                });
+                searchSuggestionsEl.querySelectorAll('.suggest-row.is-track').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const track = tracks[parseInt(row.dataset.idx, 10)];
+                        if (!track) return;
+                        hapticFeedback();
+                        hideSearchSuggestions();
+                        searchInput.blur();
+                        const artistName = (track.artist && track.artist.name) || '';
+                        searchInput.value = `${track.title} ${artistName}`.trim();
+                        performSearch(false);
+                    });
+                });
+            }
+
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.trim();
+                clearTimeout(suggestDebounceTimer);
+
+                if (!query || query.length < 2 || isSpotifyPlaylistLink(query) || isSpotifyArtistLink(query)) {
+                    hideSearchSuggestions();
+                    return;
+                }
+
+                const myToken = ++suggestRequestToken;
+                suggestDebounceTimer = setTimeout(async () => {
+                    const cacheKey = query.toLowerCase();
+                    let result = suggestCache.get(cacheKey);
+                    if (!result) {
+                        result = await fetchDeezerSuggestions(query);
+                        if (myToken === suggestRequestToken) {
+                            suggestCache.set(cacheKey, result);
+                            // Cache volutamente piccola: qui basta coprire un rapido
+                            // avanti-indietro sullo stesso testo, non serve altro.
+                            if (suggestCache.size > 40) suggestCache.delete(suggestCache.keys().next().value);
+                        }
+                    }
+                    // Se nel frattempo l'utente ha digitato altro (o la ricerca è già stata
+                    // inviata) questo risultato non è più quello giusto: si scarta.
+                    if (myToken !== suggestRequestToken || searchInput.value.trim() !== query) return;
+                    renderSearchSuggestions(result.artists, result.tracks);
+                }, 280);
+            });
+
+            searchInput.addEventListener('focus', () => {
+                const query = searchInput.value.trim();
+                if (query.length >= 2 && suggestCache.has(query.toLowerCase())) {
+                    const cached = suggestCache.get(query.toLowerCase());
+                    renderSearchSuggestions(cached.artists, cached.tracks);
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!searchSuggestionsEl || searchSuggestionsEl.classList.contains('hidden')) return;
+                if (e.target.closest('#searchContainer')) return;
+                hideSearchSuggestions();
+            });
 
             miniPlayer.addEventListener('click', (e) => {
                 if (e.target.closest('#miniPlayerControls') || e.target.closest('#miniProgressBarArea')) {
@@ -7258,6 +7433,7 @@
         // di altezza via JS (ognuno mantiene sempre la propria altezza naturale/compatta).
 
         function showResultsView(title) {
+            hideSearchSuggestions();
             const slider = document.getElementById('viewsSlider');
             if (title) {
                 const resultsTitle = document.getElementById('resultsTitle');
@@ -7288,6 +7464,7 @@
             // La barra di ricerca in home deve ripartire vuota: il testo digitato serviva
             // solo per la ricerca appena chiusa, non ha senso ritrovarselo tornando indietro.
             if (searchInput) searchInput.value = '';
+            hideSearchSuggestions();
         }
 
         function escapeHtml(text) {

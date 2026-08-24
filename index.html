@@ -1009,8 +1009,15 @@
         .home-track-row.show-delete .track-thumb-wrap { animation: qcardShake 0.3s ease; }
 
         /* ================= HOME: classifiche YouTube Music + top artisti ================= */
-        .charts-row { display:flex; gap:16px; padding:10px 24px 8px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-        .charts-row::-webkit-scrollbar { display:none; }
+        /* Sempre esattamente 3 card fisse (vedi commento su renderChartsSection/
+           openChartPlaylist: "le classifiche restano le 3 card fisse in home", mai un
+           elenco che cresce) - niente da scorrere, quindi lo scroll orizzontale nativo
+           (overflow-x:auto) è stato tolto: bastava un tocco anche solo un po' diagonale
+           su quella zona per farla scivolare lateralmente e restare storta, dando
+           l'impressione di una riga "mobile" anche senza volerlo trascinare davvero.
+           overflow:hidden mantiene lo stesso taglio visivo della terza card (già a filo
+           bordo per via della larghezza fissa delle card) ma la riga ora resta ferma. */
+        .charts-row { display:flex; gap:16px; padding:10px 24px 8px; overflow-x:hidden; touch-action:pan-y; }
         .chart-card { flex:0 0 auto; width:104px; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
         .chart-card:active .chart-card-thumb { transform:scale(0.96); }
         .chart-card .chart-card-thumb { width:104px; height:104px; border-radius:50%; background-size:cover; background-position:center; background-color:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); flex-shrink:0; }
@@ -3234,14 +3241,6 @@
                 let startX = 0, startY = 0, tracking = false;
 
                 homeView.addEventListener('touchstart', (e) => {
-                    // Le 3 card "Classifiche" in cima hanno il proprio scroll orizzontale
-                    // nativo (overflow-x:auto su #chartsRow): un tocco che parte lì va
-                    // lasciato SOLO a quello scroll, altrimenti al rilascio (touchend) lo
-                    // spostamento orizzontale veniva letto anche da questo swipe-back e
-                    // apriva/spostava la vista sottostante mentre l'utente stava solo
-                    // scorrendo le card. Le card restano quindi "bloccate": si scorrono ma
-                    // non trascinano con sé il resto della home.
-                    if (e.target.closest('#chartsRow')) { tracking = false; return; }
                     const slider = document.getElementById('viewsSlider');
                     tracking = !!(slider && !slider.classList.contains('showing-results'));
                     if (!tracking) return;

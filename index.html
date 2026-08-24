@@ -1191,6 +1191,12 @@
             box-shadow: 0 10px 22px -8px rgba(0,0,0,.5);
         }
         html.immersive .qcard.latest .name { color: var(--immersive-accent); }
+        /* Stessa eccezione di riga 1205 per il titolo "SBIXIFY": con una copertina in scala
+           di grigi l'accento dinamico diventa il "bianco sporco" #E8E8E6 (classe
+           .immersive-grey), praticamente indistinguibile dal bianco normale del nome delle
+           altre card (.qcard .name, --text-main) - qui sopra il testo bianco/grigio dello
+           sfondo dell'app, non su una pillola chiara come il pulsante play/pause, quindi il
+           contrasto va rifatto a mano invece di ereditare il colore chiaro pensato per lì.
         /* Titolo "SBIXIFY" in home: le ultime due lettere ("FY", .custom-text-accent) usano
            di default l'accento statico del tema (--accent, arancione fisso). Solo in
            Immersive le facciamo seguire l'accento dinamico calcolato dall'artwork in
@@ -1203,6 +1209,7 @@
            per distinguere le due lettere "FY" - qui si passa invece a un grigio medio neutro
            coerente col resto della UI, solo per il titolo. */
         html.immersive.immersive-grey .app-title .custom-text-accent { color: #9C99A6; }
+        html.immersive.immersive-grey .qcard.latest .name { color: #9C99A6; }
         /* Eccezione a contrasto rimossa: non ci sono più cornici da colorare attorno al
            mini player o alla thumbnail del brano in ascolto (vedi nota sopra). */
         /* ---- Now Playing sheet: artwork come sfondo (niente più disco rotondo in vista) ---- */
@@ -3356,10 +3363,37 @@
             });
 
             document.addEventListener('click', (e) => {
-                if (!searchSuggestionsEl || searchSuggestionsEl.classList.contains('hidden')) return;
                 if (e.target.closest('#searchContainer')) return;
+                // Toccare fuori dalla barra deve sempre togliere il focus da lì, non solo
+                // nascondere il dropdown: senza il blur esplicito, su alcuni browser Android
+                // (Brave incluso) l'input restava "attivo" dopo aver chiuso la tastiera col
+                // gesto/tasto indietro del sistema - il cursore lampeggiante restava visibile
+                // e QUALSIASI tocco successivo sullo schermo riapriva la tastiera, perché per
+                // il browser il campo non aveva mai davvero perso il focus.
+                searchInput.blur();
+                if (!searchSuggestionsEl || searchSuggestionsEl.classList.contains('hidden')) return;
                 hideSearchSuggestions();
             });
+
+            // Stessa causa del commento qui sopra, ma per il caso in cui la tastiera viene
+            // chiusa SENZA toccare altrove (gesto/tasto indietro nativo, pulsante "Fine" della
+            // tastiera stessa): nessun evento 'click' scatta in quel caso, quindi il campo
+            // resta focus-ato lato browser anche se la tastiera è sparita. La chiusura della
+            // tastiera fa sempre tornare il viewport visibile alla sua altezza piena: la
+            // intercettiamo per togliere il focus a mano quando succede mentre la barra di
+            // ricerca ce l'ha ancora.
+            if (window.visualViewport) {
+                let vvResizeT = null;
+                window.visualViewport.addEventListener('resize', () => {
+                    clearTimeout(vvResizeT);
+                    vvResizeT = setTimeout(() => {
+                        const keyboardLikelyClosed = window.visualViewport.height >= window.innerHeight - 40;
+                        if (keyboardLikelyClosed && document.activeElement === searchInput) {
+                            searchInput.blur();
+                        }
+                    }, 120);
+                });
+            }
 
             miniPlayer.addEventListener('click', (e) => {
                 if (e.target.closest('#miniPlayerControls') || e.target.closest('#miniProgressBarArea')) {

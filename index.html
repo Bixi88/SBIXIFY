@@ -3134,6 +3134,16 @@
                 searchSuggestionsEl.classList.add('hidden');
                 searchSuggestionsEl.innerHTML = '';
             }
+            // BUGFIX: questa funzione è definita qui dentro (closure di
+            // DOMContentLoaded), ma showResultsView() - che vive nello scope globale
+            // dello script, fuori da questo blocco - la chiama a ogni apertura di
+            // qualunque schermata risultati (ricerca, classifiche, playlist, artisti,
+            // brani recenti: 16 punti diversi). Essendo fuori scope, la chiamata dava
+            // "ReferenceError: hideSearchSuggestions is not defined" e interrompeva
+            // showResultsView ovunque venisse invocata - cioè quasi ad ogni tap.
+            // La esponiamo su window così resta raggiungibile anche da fuori questa
+            // closure, senza dover spostare tutto il blocco suggerimenti.
+            window.hideSearchSuggestions = hideSearchSuggestions;
 
             async function fetchDeezerSuggestions(query) {
                 const [artistRes, trackRes] = await Promise.all([
@@ -7433,7 +7443,11 @@
         // di altezza via JS (ognuno mantiene sempre la propria altezza naturale/compatta).
 
         function showResultsView(title) {
-            hideSearchSuggestions();
+            // Vedi commento vicino alla definizione di hideSearchSuggestions (dentro
+            // DOMContentLoaded): è esposta su window per essere raggiungibile da qui.
+            // Optional chaining come rete di sicurezza extra, nel caso questa venga
+            // mai chiamata prima che DOMContentLoaded l'abbia definita.
+            window.hideSearchSuggestions?.();
             const slider = document.getElementById('viewsSlider');
             if (title) {
                 const resultsTitle = document.getElementById('resultsTitle');

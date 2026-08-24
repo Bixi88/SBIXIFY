@@ -3249,14 +3249,15 @@
                     const deltaY = e.changedTouches[0].clientY - startY;
                     if (Math.abs(deltaX) <= Math.abs(deltaY) * DIRECTION_RATIO) return;
 
-                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0 && nowPlayingListType === 'spotify' && nowPlayingListKey && currentLoadedKey === nowPlayingListKey) {
-                        // Swipe sinistra: riapre la lista canzoni della playlist attiva.
-                        // Permesso solo se il brano in ascolto ora appartiene DAVVERO a una
-                        // playlist Spotify (non una semplice ricerca YouTube) ed è la stessa
-                        // già caricata in appState.tracks (stesso listKey): un Recente aperto
-                        // senza playlist non ha nessuna lista a cui tornare, quindi lo swipe
-                        // non deve fare nulla invece di riaprire una lista sfogliata in
-                        // passato e ormai scollegata da ciò che sta suonando.
+                    if (deltaX < -SWIPE_THRESHOLD && appState.tracks.length > 0 && nowPlayingListKey && currentLoadedKey === nowPlayingListKey && (nowPlayingListType === 'spotify' || nowPlayingListKey.startsWith('chart:'))) {
+                        // Swipe sinistra: riapre la lista canzoni della playlist/classifica
+                        // attiva. Permesso solo se il brano in ascolto ora appartiene DAVVERO
+                        // a una playlist Spotify o a una classifica (non una semplice ricerca
+                        // YouTube testuale) ed è la stessa già caricata in appState.tracks
+                        // (stesso listKey): un Recente aperto senza playlist non ha nessuna
+                        // lista a cui tornare, quindi lo swipe non deve fare nulla invece di
+                        // riaprire una lista sfogliata in passato e ormai scollegata da ciò
+                        // che sta suonando.
                         hapticFeedback();
                         showResultsView();
                     } else if (deltaX > SWIPE_THRESHOLD) {
@@ -4713,19 +4714,38 @@
 
         async function autoRefreshStalePlaylists() {
             const recents = loadRecentPlaylists();
-            if (recents.length === 0) return;
             const cache = loadPlaylistTracksCache();
-            const stale = recents.filter(it => {
-                const entry = cache[it.url];
-                return !entry || (Date.now() - (entry.ts || 0) > PLAYLIST_AUTO_REFRESH_TTL_MS);
-            });
-            for (const item of stale) {
-                // Se proprio in questo momento è quella aperta a schermo, la saltiamo: non
-                // avrebbe senso rifare la fetch in sordina mentre l'utente la sta già
-                // guardando (e se l'ha aperta ora la sua cache non sarebbe comunque "stale").
-                if (currentLoadedKey === 'playlist:' + item.url) continue;
-                await silentRefreshPlaylist(item.url);
-                await sleep(PLAYLIST_AUTO_REFRESH_GAP_MS);
+            if (recents.length > 0) {
+                const stale = recents.filter(it => {
+                    const entry = cache[it.url];
+                    return !entry || (Date.now() - (entry.ts || 0) > PLAYLIST_AUTO_REFRESH_TTL_MS);
+                });
+                for (const item of stale) {
+                    // Se proprio in questo momento è quella aperta a schermo, la saltiamo: non
+                    // avrebbe senso rifare la fetch in sordina mentre l'utente la sta già
+                    // guardando (e se l'ha aperta ora la sua cache non sarebbe comunque "stale").
+                    if (currentLoadedKey === 'playlist:' + item.url) continue;
+                    await silentRefreshPlaylist(item.url);
+                    await sleep(PLAYLIST_AUTO_REFRESH_GAP_MS);
+                }
+            }
+
+            // Stessa scadenza settimanale delle playlist, applicata anche alle 3 card
+            // "Classifiche" in home: a differenza delle playlist NON vengono mai salvate nei
+            // Recenti (restano tre card fisse, non un elenco che cresce), quindi la lista da
+            // scandire arriva dalla cache delle classifiche mostrate in home (vedi
+            // loadChartsCache) invece che da loadRecentPlaylists.
+            const charts = loadChartsCache()?.it?.charts || [];
+            if (charts.length > 0) {
+                const staleCharts = charts.filter(c => {
+                    const entry = cache['chart:' + c.browseId];
+                    return !entry || (Date.now() - (entry.ts || 0) > PLAYLIST_AUTO_REFRESH_TTL_MS);
+                });
+                for (const chart of staleCharts) {
+                    if (currentLoadedKey === 'chart:' + chart.browseId) continue;
+                    await silentRefreshChart(chart);
+                    await sleep(PLAYLIST_AUTO_REFRESH_GAP_MS);
+                }
             }
         }
 
@@ -4764,6 +4784,28 @@
                 updateRecentPlaylistMeta(url, { name: cleanName, artwork });
             } catch (err) {
                 console.warn(`Auto-refresh fallito per playlist/artista ${url}:`, err);
+            }
+        }
+
+        // Equivalente di silentRefreshPlaylist, ma per UNA card "Classifiche": aggiorna solo
+        // la cache tracklist (chiave 'chart:'+browseId, la stessa usata da openChartPlaylist),
+        // MAI i Recenti - le classifiche non ci finiscono mai, a differenza delle playlist.
+        async function silentRefreshChart(chart) {
+            if (!chart || !chart.browseId) return;
+            const cacheKey = 'chart:' + chart.browseId;
+            try {
+                const data = await chartsWorkerFetch(`/playlist?browseId=${encodeURIComponent(chart.browseId)}&gl=IT`);
+                const items = (data?.items || []).filter(it => it.videoId);
+                if (items.length === 0) return;
+                const tracks = items.map(it => ({
+                    id: it.videoId,
+                    title: it.title,
+                    channel: it.subtitle || '',
+                    thumbnail: it.thumbnail || null,
+                }));
+                setCachedPlaylistTracks(cacheKey, { name: chart.title, artwork: chart.thumbnail || null, tracks });
+            } catch (err) {
+                console.warn(`Auto-refresh fallito per la classifica ${chart.browseId}:`, err);
             }
         }
 
@@ -5380,19 +5422,34 @@
             });
         }
 
-        // Apre una playlist di classifica: legge il suo contenuto vero dal Worker
-        // (endpoint /playlist) al momento del tap, e lo mostra nella vista Risultati
-        // come una tracklist riproducibile normale.
+        // Apre una playlist di classifica: prima controlla la cache tracklist (stessa
+        // chiave/TTL delle playlist Spotify, riempita anche dal refresh settimanale in
+        // sordina, vedi silentRefreshChart) per una riapertura istantanea; solo se manca o è
+        // scaduta interroga davvero il Worker (endpoint /playlist). In NESSUN caso finisce
+        // nei Recenti (né addRecentItem né addRecentPlaylist): le classifiche restano le 3
+        // card fisse in home, non un elenco che cresce.
         async function openChartPlaylist(chart) {
             if (!chart || !chart.browseId) return;
             hapticFeedback();
 
+            const cacheKey = 'chart:' + chart.browseId;
             currentListSource = 'youtube';
+            nextSearchPageToken = '';
+            appState.currentIndex = -1;
+            currentLoadedKey = cacheKey;
+            currentLoadedTitle = chart.title;
+
+            const cached = getCachedPlaylistTracks(cacheKey);
+            if (cached) {
+                appState.tracks = cached.tracks.map(t => ({ ...t }));
+                toggleDownloadButtons(false);
+                showResultsView(cached.name || chart.title);
+                renderTracklist(0);
+                return;
+            }
+
             showResultsView(chart.title);
             appState.tracks = [];
-            appState.currentIndex = -1;
-            currentLoadedKey = 'chart:' + chart.browseId;
-            currentLoadedTitle = chart.title;
             document.getElementById('trackList').innerHTML = '';
             const resultsStatusText = document.getElementById('resultsStatusText');
             if (resultsStatusText) {
@@ -5420,6 +5477,7 @@
                 thumbnail: it.thumbnail,
             }));
             renderTracklist(0);
+            setCachedPlaylistTracks(cacheKey, { name: chart.title, artwork: chart.thumbnail || null, tracks: appState.tracks });
         }
 
         function artistRowHtml(a, i) {
@@ -6182,16 +6240,15 @@
         // classifica ufficiale Deezer (ordinata per ascolti, come "Popular" su Spotify).
         // Bonus rispetto allo scraping Spotify: qui arriva anche la copertina per singolo
         // brano, quindi il player ha subito l'artwork corretta senza aspettare iTunes.
-        async function fetchDeezerArtistTopTracks(artistName, limit) {
+        // Top brani per un artista Deezer GIÀ identificato (id noto, niente nuova ricerca
+        // per nome): usata quando l'id arriva da findExactDeezerArtist, che ha già scandito
+        // TUTTI i risultati della ricerca (non solo il primo) per trovare il match esatto -
+        // per artisti poco noti (es. "YOF", "Florinda") il match giusto spesso non è il primo
+        // risultato per popolarità, quindi cercarlo di nuovo qui per nome rifarebbe lo stesso
+        // errore.
+        async function fetchDeezerArtistTopTracksById(artistId, artistName, limit) {
             try {
-                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}`);
-                const artist = search && Array.isArray(search.data) ? search.data[0] : null;
-                if (!artist) return [];
-                if (normalizeArtistName(artist.name) !== normalizeArtistName(artistName)) {
-                    console.warn(`Deezer ha proposto "${artist.name}" per "${artistName}": scartato, non è un match esatto.`);
-                    return [];
-                }
-                const top = await jsonpRequest(`https://api.deezer.com/artist/${artist.id}/top?limit=${limit}`);
+                const top = await jsonpRequest(`https://api.deezer.com/artist/${artistId}/top?limit=${limit}`);
                 const items = (top && Array.isArray(top.data)) ? top.data : [];
                 return items
                     .filter(t => t && t.title)
@@ -6200,6 +6257,26 @@
                         artist: (t.artist && t.artist.name) || artistName,
                         thumbnail: extractDeezerArtwork(t, 'track')
                     }));
+            } catch (err) {
+                console.warn('Impossibile recuperare i top brani Deezer:', err);
+                return [];
+            }
+        }
+
+        async function fetchDeezerArtistTopTracks(artistName, limit) {
+            try {
+                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=25`);
+                const results = search && Array.isArray(search.data) ? search.data : [];
+                const target = normalizeArtistName(artistName);
+                // Scandiamo TUTTI i risultati (non solo il primo, ordinato per popolarità su
+                // Deezer): per un artista poco conosciuto il match esatto può comparire più in
+                // basso nell'elenco, dietro artisti più famosi con un nome simile.
+                const artist = results.find(a => normalizeArtistName(a.name) === target) || null;
+                if (!artist) {
+                    console.warn(`Nessun artista Deezer corrisponde esattamente a "${artistName}".`);
+                    return [];
+                }
+                return fetchDeezerArtistTopTracksById(artist.id, artist.name, limit);
             } catch (err) {
                 console.warn('Impossibile recuperare i top brani Deezer:', err);
                 return [];
@@ -6434,23 +6511,24 @@
 
         // --- RICERCA TESTUALE PER NOME ARTISTA (barra di ricerca, non un link) ---
         // Se il testo digitato nella barra combacia ESATTAMENTE (a meno di maiuscole/accenti,
-        // vedi normalizeArtistName) con il nome di un artista su Deezer, la ricerca viene
-        // trattata come "cerco un artista": costruiamo la sua playlist di brani più ascoltati
-        // (stessa fonte di fetchDeezerArtistTopTracks, già usata per l'import di un link
-        // Spotify artista) e la salviamo nei Recenti come una playlist qualsiasi. Se il testo
-        // contiene anche altro (titolo di un brano, "feat.", ecc.) o non c'è nessun match
-        // esatto, resta una normale ricerca YouTube (vedi handleSearchSubmit) e - come già
-        // oggi - non viene salvato nulla nei Recenti. Timeout corto (4s, contro gli 8s di
-        // default di jsonpRequest): è un controllo che gira PRIMA di ogni ricerca testuale,
-        // non deve rallentare sensibilmente una normale ricerca di un brano.
+        // vedi normalizeArtistName) con il nome di un artista su Deezer, viene mostrata in
+        // cima ai risultati una card artista (vedi performSearch/prependArtistCard): un tap
+        // costruisce la sua playlist di brani più ascoltati e la salva nei Recenti come una
+        // playlist qualsiasi. Le righe canzone sotto restano invece una normale ricerca
+        // YouTube, mai salvata. Timeout di 5s (contro gli 8s di default di jsonpRequest): il
+        // controllo gira in parallelo alla ricerca YouTube, ma non deve tenerla in ostaggio
+        // troppo a lungo se Deezer risponde lentamente.
         const ARTIST_SEARCH_URL_PREFIX = 'artist-search:';
 
         async function findExactDeezerArtist(query) {
             try {
-                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}`, 4000);
-                const artist = search && Array.isArray(search.data) ? search.data[0] : null;
-                if (!artist || normalizeArtistName(artist.name) !== normalizeArtistName(query)) return null;
-                return artist;
+                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=25`, 5000);
+                const results = search && Array.isArray(search.data) ? search.data : [];
+                const target = normalizeArtistName(query);
+                // Scandiamo TUTTI i risultati, non solo il primo (ordinato per popolarità su
+                // Deezer): un artista poco conosciuto (es. "YOF", "Florinda") spesso non è il
+                // primo risultato, restando dietro artisti più famosi con un nome simile.
+                return results.find(a => normalizeArtistName(a.name) === target) || null;
             } catch (err) {
                 return null;
             }
@@ -6534,7 +6612,7 @@
             if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
             try {
-                const rawTracks = await fetchDeezerArtistTopTracks(artist.name, ARTIST_TOP_TRACKS_COUNT);
+                const rawTracks = await fetchDeezerArtistTopTracksById(artist.id, artist.name, ARTIST_TOP_TRACKS_COUNT);
                 if (rawTracks.length === 0) throw new Error('Nessun brano trovato per questo artista.');
 
                 appState.tracks = rawTracks.map(t => {

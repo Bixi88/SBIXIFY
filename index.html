@@ -380,6 +380,14 @@
             0% { transform: translate3d(0, 0, 0); }
             100% { transform: translate3d(-50%, 0, 0); }
         }
+        /* Sfumatura ai bordi per i testi troncati "generici" (vedi MARQUEE_TARGET_SELECTOR
+           più sotto in JS): stessa maschera di .marquee-wrapper.fade-edges, ma applicata
+           direttamente sull'elemento di testo originale invece che su un wrapper dedicato,
+           così non serve toccare il markup di ogni pagina per usarla. */
+        .marquee-fade {
+            mask-image: linear-gradient(to right, transparent, #fff 6%, #fff 94%, transparent);
+            -webkit-mask-image: linear-gradient(to right, transparent, #fff 6%, #fff 94%, transparent);
+        }
 
         /* Pulsante Play/Pausa: icona semplice (Font Awesome), nessun hover-scale sul bottone
            (dimensione fissa identica su Windows e Android). Solo un piccolo "pop" quando lo
@@ -3203,7 +3211,7 @@
             });
             document.getElementById('refreshPlaylistBtn').addEventListener('click', () => {
                 if (currentListSource === 'spotify' && currentLoadedKey && currentLoadedKey.startsWith('playlist:')) {
-                    importSpotifyPlaylist(currentLoadedKey.slice('playlist:'.length), true);
+                    openPlaylistByUrl(currentLoadedKey.slice('playlist:'.length), true);
                 }
             });
 
@@ -3219,6 +3227,14 @@
                 let startX = 0, startY = 0, tracking = false;
 
                 homeView.addEventListener('touchstart', (e) => {
+                    // Le 3 card "Classifiche" in cima hanno il proprio scroll orizzontale
+                    // nativo (overflow-x:auto su #chartsRow): un tocco che parte lì va
+                    // lasciato SOLO a quello scroll, altrimenti al rilascio (touchend) lo
+                    // spostamento orizzontale veniva letto anche da questo swipe-back e
+                    // apriva/spostava la vista sottostante mentre l'utente stava solo
+                    // scorrendo le card. Le card restano quindi "bloccate": si scorrono ma
+                    // non trascinano con sé il resto della home.
+                    if (e.target.closest('#chartsRow')) { tracking = false; return; }
                     const slider = document.getElementById('viewsSlider');
                     tracking = !!(slider && !slider.classList.contains('showing-results'));
                     if (!tracking) return;
@@ -4840,7 +4856,17 @@
             list.querySelectorAll('.settings-playlist-row').forEach(row => {
                 row.addEventListener('click', (e) => {
                     if (e.target.closest('.settings-playlist-remove')) return;
-                    importSpotifyPlaylist(row.dataset.url);
+                    const url = row.dataset.url;
+                    // Stessa eccezione di openRecentItem: una voce "ricerca artista" (vedi
+                    // searchArtistFromHome) non è un import Spotify, rilancia la ricerca.
+                    if (url.startsWith('yt-artist:')) {
+                        const artistName = decodeURIComponent(url.slice('yt-artist:'.length));
+                        searchInput.value = artistName;
+                        performSearch(false);
+                        closeApiModal();
+                        return;
+                    }
+                    openPlaylistByUrl(url);
                     closeApiModal();
                 });
             });
@@ -5090,6 +5116,16 @@
 
         function openRecentItem(item) {
             if (!item) return;
+            // Voce "ricerca artista" salvata da Top Artisti (vedi searchArtistFromHome):
+            // nessun vero import Spotify da rifare, si rilancia semplicemente la stessa
+            // ricerca YouTube.
+            if (item.type === 'playlist' && item.url && item.url.startsWith('yt-artist:')) {
+                const artistName = decodeURIComponent(item.url.slice('yt-artist:'.length));
+                hapticFeedback();
+                searchInput.value = artistName;
+                performSearch(false);
+                return;
+            }
             if (item.type === 'playlist' && item.url) {
                 const key = 'playlist:' + item.url;
                 if (currentLoadedKey === key && appState.tracks.length > 0) {
@@ -5101,7 +5137,7 @@
                     updateRefreshPlaylistBtn(item.url);
                     return;
                 }
-                importSpotifyPlaylist(item.url);
+                openPlaylistByUrl(item.url);
             }
         }
 
@@ -5399,15 +5435,35 @@
             `;
         }
 
+        // Chiave sintetica usata al posto di un vero URL Spotify per le ricerche artista
+        // "salvate": openRecentItem e il click nell'elenco Impostazioni la riconoscono dal
+        // prefisso e rilanciano la stessa ricerca YouTube invece di tentare un import Spotify.
+        function ytArtistSearchUrl(artistName) {
+            return 'yt-artist:' + encodeURIComponent(artistName);
+        }
+
+        // Cerca un artista (tap su una riga "Top Artisti" in home) E lo salva nei Recenti
+        // come fosse una playlist - stesso trattamento riservato ai link artista Spotify in
+        // importSpotifyPlaylist. A differenza di una ricerca testuale libera (quasi sempre
+        // per una canzone, MAI salvata nei Recenti), qui l'utente sta chiaramente cercando
+        // un artista, quindi la ricerca merita di restare a portata di mano.
+        function searchArtistFromHome(artistName, artwork = null) {
+            if (!artistName) return;
+            hapticFeedback();
+            searchInput.value = artistName;
+            performSearch(false);
+            const url = ytArtistSearchUrl(artistName);
+            addRecentItem({ name: artistName, type: 'playlist', url, artwork });
+            addRecentPlaylist({ name: artistName, url, artwork });
+        }
+
         function bindArtistRows(container, artists) {
             container.querySelectorAll('.artist-row').forEach(row => {
                 row.addEventListener('click', () => {
                     const idx = parseInt(row.dataset.index, 10);
                     const artist = artists[idx];
                     if (!artist || !artist.title) return;
-                    hapticFeedback();
-                    searchInput.value = artist.title;
-                    performSearch();
+                    searchArtistFromHome(artist.title, artist.thumbnail || null);
                 });
             });
         }
@@ -5542,7 +5598,7 @@
                     renderTracklist(0);
                     updateRefreshPlaylistBtn(url);
                 } else {
-                    importSpotifyPlaylist(url);
+                    openPlaylistByUrl(url);
                 }
             };
 
@@ -5721,6 +5777,77 @@
             }
         }
 
+        // ================= MARQUEE GENERICO (qualunque testo troppo lungo, in tutte le
+        // pagine) =================
+        // I due marquee sopra (titolo grande + mini player) sono gestiti a mano perché
+        // hanno un markup dedicato. Tutti gli ALTRI testi "a riga singola con puntini"
+        // dell'app (titolo/artista nella lista canzoni, nome playlist nell'header Now
+        // Playing, sottotitolo mini player, righe Top Artisti, righe "Canzoni" in home,
+        // elenco Playlist Recenti nelle Impostazioni...) condividono le stesse classi
+        // CSS di troncamento (Tailwind ".truncate" o le equivalenti custom qui sotto):
+        // invece di richiamare una funzione dedicata da OGNI punto del codice che scrive
+        // uno di questi testi (rischiando di dimenticarne qualcuno), un MutationObserver
+        // sull'intero documento intercetta da solo ogni cambio di contenuto e applica lo
+        // stesso scorrimento a loop del titolo grande, dove serve. Escluse di proposito le
+        // etichette pensate per andare su due righe (nomi delle card Recenti/Classifiche
+        // in home, "line-clamp:2"): lì il troncamento a 2 righe resta quello attuale.
+        const MARQUEE_TARGET_SELECTOR = '.truncate, .rt, .t-title, .t-sub, .a-name, .a-sub, .settings-playlist-name';
+        let marqueeMutationGuard = false;
+
+        function activateMarquee(el) {
+            if (!el || marqueeMutationGuard) return;
+            const hasStructure = !!(el.firstElementChild && el.firstElementChild.classList && el.firstElementChild.classList.contains('marquee-content'));
+            const text = (hasStructure ? (el.dataset.marqueeSrc || '') : (el.textContent || '')).trim();
+            if (!text) return;
+            if (el.children.length && !hasStructure) return; // markup non testuale: non lo tocchiamo
+            const widthNow = String(el.clientWidth);
+            if (hasStructure && el.dataset.marqueeSrc === text && el.dataset.marqueeW === widthNow) return; // niente di cambiato
+            marqueeMutationGuard = true;
+            try {
+                el.dataset.marqueeSrc = text;
+                el.dataset.marqueeW = widthNow;
+                el.classList.remove('marquee-fade');
+                el.innerHTML = `<span class="marquee-content">${escapeHtml(text)}</span>`;
+                const content = el.firstElementChild;
+                if (content.scrollWidth > el.clientWidth + 1) {
+                    const gap = "<span class='inline-block w-10'></span>";
+                    content.innerHTML = escapeHtml(text) + gap + escapeHtml(text) + gap;
+                    content.classList.add('animate-marquee');
+                    el.classList.add('marquee-fade');
+                }
+            } finally {
+                marqueeMutationGuard = false;
+            }
+        }
+
+        function activateMarquees(root) {
+            (root || document).querySelectorAll(MARQUEE_TARGET_SELECTOR).forEach(activateMarquee);
+        }
+
+        (function setupGenericMarqueeObserver() {
+            const observer = new MutationObserver((mutations) => {
+                if (marqueeMutationGuard) return;
+                const targets = new Set();
+                mutations.forEach(m => {
+                    const node = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+                    if (!node || !node.closest || !node.closest('body')) return;
+                    if (node.matches && node.matches(MARQUEE_TARGET_SELECTOR)) targets.add(node);
+                    if (node.querySelectorAll) node.querySelectorAll(MARQUEE_TARGET_SELECTOR).forEach(n => targets.add(n));
+                });
+                targets.forEach(activateMarquee);
+            });
+            observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+            let resizeT = null;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeT);
+                resizeT = setTimeout(() => activateMarquees(document), 150);
+            });
+            // Passata iniziale: intercetta i testi già presenti nel markup al caricamento,
+            // prima ancora che qualcosa venga riscritto (l'observer da solo scatta solo sui
+            // cambi successivi).
+            activateMarquees(document);
+        })();
+
         // --- RICERCA YOUTUBE TRAMITE IL NOSTRO WORKER CLOUDFLARE ---
         // Storia breve: prima chiave YouTube Data API v3 personale + Worker Cloudflare
         // privato di backup; poi tentativo con istanze pubbliche Invidious/Piped e
@@ -5761,11 +5888,20 @@
             }
         }
 
+        // Generazione della ricerca corrente: la card artista (vedi prependArtistCard) arriva
+        // in modo asincrono, in parallelo alla ricerca YouTube. Se nel frattempo l'utente ha
+        // già lanciato un'altra ricerca, questo contatore evita che la card della ricerca
+        // VECCHIA si infili in cima a una lista di risultati ormai diversa.
+        let searchGeneration = 0;
+
         async function performSearch(isLoadMore = false) {
             const query = searchInput.value.trim();
             const resultsStatusText = document.getElementById('resultsStatusText');
             
             if (!query || (isLoadMore && isFetchingMore)) return;
+
+            let artistPromise = null;
+            let maybeShowArtistCard = () => {};
 
             if (!isLoadMore) {
                 currentListSource = 'youtube';
@@ -5775,6 +5911,25 @@
                 document.getElementById('trackList').innerHTML = '';
                 if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
+                // In parallelo alla ricerca YouTube (sotto), controlliamo se il testo digitato
+                // combacia ESATTAMENTE (vedi findExactDeezerArtist) con il nome di un artista:
+                // se sì, appena pronta si aggiunge in cima ai risultati canzone una card
+                // distinta (cerchio più grande, etichetta "Artista", vedi prependArtistCard).
+                // Cliccarla costruisce la sua playlist e la salva nei Recenti; le righe canzone
+                // sotto restano invece una ricerca normale, mai salvata. La chiamata parte
+                // subito qui (in parallelo alla ricerca YouTube sotto), ma il .then che
+                // inserisce davvero la card viene agganciato SOLO dopo ciascuna renderTracklist
+                // (vedi sotto): così, qualunque sia l'ordine con cui le due richieste
+                // rispondono, la card non rischia mai di essere cancellata dal successivo
+                // trackListDiv.innerHTML = '' fatto da renderTracklist.
+                const mySearchGeneration = ++searchGeneration;
+                artistPromise = findExactDeezerArtist(query);
+                maybeShowArtistCard = () => {
+                    artistPromise.then(artist => {
+                        if (artist && searchGeneration === mySearchGeneration) prependArtistCard(artist);
+                    });
+                };
+
                 // Stessa ricerca (testo + filtri) già fatta di recente: riusiamo i
                 // risultati in cache invece di richiamare l'API YouTube, per non
                 // consumare quota per una ricerca già eseguita poco prima.
@@ -5783,6 +5938,7 @@
                     nextSearchPageToken = cachedSearch.nextPageToken || '';
                     appState.tracks = cachedSearch.items;
                     renderTracklist(0);
+                    maybeShowArtistCard();
                     currentLoadedKey = 'query:' + query;
                     currentLoadedTitle = query;
                     updateRefreshPlaylistBtn(null);
@@ -5822,6 +5978,7 @@
                 appState.tracks = appState.tracks.concat(newTracks);
                 renderTracklist(isLoadMore ? previousCount : 0);
                 if (!isLoadMore) {
+                    maybeShowArtistCard();
                     currentLoadedKey = 'query:' + query;
                     currentLoadedTitle = query;
                     updateRefreshPlaylistBtn(null);
@@ -6272,6 +6429,188 @@
                         </div>
                     `;
                 }
+            }
+        }
+
+        // --- RICERCA TESTUALE PER NOME ARTISTA (barra di ricerca, non un link) ---
+        // Se il testo digitato nella barra combacia ESATTAMENTE (a meno di maiuscole/accenti,
+        // vedi normalizeArtistName) con il nome di un artista su Deezer, la ricerca viene
+        // trattata come "cerco un artista": costruiamo la sua playlist di brani più ascoltati
+        // (stessa fonte di fetchDeezerArtistTopTracks, già usata per l'import di un link
+        // Spotify artista) e la salviamo nei Recenti come una playlist qualsiasi. Se il testo
+        // contiene anche altro (titolo di un brano, "feat.", ecc.) o non c'è nessun match
+        // esatto, resta una normale ricerca YouTube (vedi handleSearchSubmit) e - come già
+        // oggi - non viene salvato nulla nei Recenti. Timeout corto (4s, contro gli 8s di
+        // default di jsonpRequest): è un controllo che gira PRIMA di ogni ricerca testuale,
+        // non deve rallentare sensibilmente una normale ricerca di un brano.
+        const ARTIST_SEARCH_URL_PREFIX = 'artist-search:';
+
+        async function findExactDeezerArtist(query) {
+            try {
+                const search = await jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}`, 4000);
+                const artist = search && Array.isArray(search.data) ? search.data[0] : null;
+                if (!artist || normalizeArtistName(artist.name) !== normalizeArtistName(query)) return null;
+                return artist;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        // Punto d'ingresso unico per riaprire una playlist salvata nei Recenti/Impostazioni:
+        // quelle "vere" restano un link Spotify (import via importSpotifyPlaylist), quelle
+        // nate da una ricerca per nome artista hanno invece un url sintetico (prefisso
+        // ARTIST_SEARCH_URL_PREFIX, mai un link Spotify reale) e vanno riaperte rifacendo la
+        // stessa ricerca Deezer. Ogni punto del codice che riapriva una voce dei Recenti
+        // chiamando importSpotifyPlaylist(url) passa da qui, così non serve controllare il
+        // prefisso in più posti diversi.
+        function openPlaylistByUrl(url, forceRefresh = false) {
+            if (url && url.startsWith(ARTIST_SEARCH_URL_PREFIX)) {
+                reopenArtistSearchPlaylist(url, forceRefresh);
+            } else {
+                importSpotifyPlaylist(url, forceRefresh);
+            }
+        }
+
+        // Card artista in cima ai risultati di ricerca (testo digitato che combacia con un
+        // nome su Deezer, vedi performSearch/findExactDeezerArtist): cerchio più grande
+        // (64px contro 52px delle righe canzone) ed etichetta "Artista" per distinguerla
+        // subito a colpo d'occhio dalle righe canzone sotto. Non fa parte di appState.tracks
+        // (non è un brano riproducibile): un click costruisce la playlist dell'artista e la
+        // salva nei Recenti, tramite la stessa searchArtistPlaylist usata per un link Spotify
+        // artista o per una ricerca testuale risolta con match esatto.
+        function prependArtistCard(artist) {
+            const trackListDiv = document.getElementById('trackList');
+            if (!trackListDiv) return;
+            const cleanName = cleanSpotifyArtistName(artist.name);
+            const cover = artist.picture_xl || artist.picture_big || artist.picture_medium || null;
+
+            const card = document.createElement('div');
+            card.className = 'track-row track-row-enter flex items-center gap-3.5 py-2.5 cursor-pointer transition-colors';
+            card.innerHTML = `
+                <div class="rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-neutral-800" style="width:64px;height:64px;">
+                    ${cover ? `<img src="${cover}" class="w-full h-full object-cover" alt="">` : '<i class="fa-solid fa-user text-neutral-500"></i>'}
+                </div>
+                <div class="flex-1 overflow-hidden">
+                    <p class="text-sm font-bold truncate text-white">${escapeHtml(cleanName)}</p>
+                    <p class="text-xs truncate mt-1 custom-text-muted font-medium">Artista</p>
+                </div>
+            `;
+            card.addEventListener('click', () => {
+                hapticFeedback();
+                searchArtistPlaylist(artist);
+            });
+            trackListDiv.insertBefore(card, trackListDiv.firstChild);
+        }
+
+        async function searchArtistPlaylist(artist, forceRefresh = false) {
+            const resultsStatusText = document.getElementById('resultsStatusText');
+            const url = ARTIST_SEARCH_URL_PREFIX + normalizeArtistName(artist.name);
+            const cleanName = cleanSpotifyArtistName(artist.name);
+
+            const cached = forceRefresh ? null : getCachedPlaylistTracks(url);
+            if (cached) {
+                currentListSource = 'spotify';
+                nextSearchPageToken = '';
+                appState.tracks = cached.tracks.map(t => ({ ...t }));
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cached.name;
+                toggleDownloadButtons(false);
+                showResultsView(cached.name);
+                renderTracklist(0);
+                updateRefreshPlaylistBtn(url);
+                addRecentItem({ name: cached.name, type: 'playlist', url, artwork: cached.artwork });
+                addRecentPlaylist({ name: cached.name, url, artwork: cached.artwork });
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+                return;
+            }
+
+            currentListSource = 'spotify';
+            nextSearchPageToken = '';
+            showResultsView('Ricerca in corso');
+            appState.tracks = []; appState.currentIndex = -1;
+            toggleDownloadButtons(false);
+            document.getElementById('trackList').innerHTML = '';
+            if (resultsStatusText) resultsStatusText.classList.add('hidden');
+
+            try {
+                const rawTracks = await fetchDeezerArtistTopTracks(artist.name, ARTIST_TOP_TRACKS_COUNT);
+                if (rawTracks.length === 0) throw new Error('Nessun brano trovato per questo artista.');
+
+                appState.tracks = rawTracks.map(t => {
+                    const cachedTrack = getCachedTrack(t.title, t.artist);
+                    const thumbnail = t.thumbnail || cachedTrack?.thumbnail || null;
+                    return {
+                        id: cachedTrack?.id || null,
+                        title: t.title,
+                        channel: t.artist,
+                        thumbnail,
+                        artworkFetched: !!(thumbnail || cachedTrack?.id),
+                        resolved: !!cachedTrack?.id,
+                        spotifyImport: true
+                    };
+                });
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cleanName;
+
+                if (resultsStatusText) resultsStatusText.classList.add('hidden');
+                renderTracklist(0);
+                showResultsView(cleanName);
+
+                const cover = artist.picture_xl || artist.picture_big || artist.picture_medium || null;
+                const artwork = isSpotifyMosaicCover(cover) ? (pickRandomPlaylistArtwork(appState.tracks) || cover) : cover;
+                addRecentItem({ name: cleanName, type: 'playlist', url, artwork });
+                addRecentPlaylist({ name: cleanName, url, artwork });
+                setCachedPlaylistTracks(url, { name: cleanName, artwork, tracks: appState.tracks });
+                updateRefreshPlaylistBtn(url);
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+            } catch (err) {
+                console.warn('Ricerca artista fallita:', err);
+                if (resultsStatusText) {
+                    resultsStatusText.classList.remove('hidden');
+                    resultsStatusText.innerText = 'Nessun brano trovato per questo artista.';
+                }
+            }
+        }
+
+        // Riapertura di una playlist-artista dai Recenti/Impostazioni quando la cache è
+        // scaduta (o refresh forzato): rifà la stessa ricerca Deezer usando il nome
+        // dell'artista già salvato nei Recenti, invece di richiedere di nuovo il testo
+        // all'utente.
+        async function reopenArtistSearchPlaylist(url, forceRefresh = false) {
+            const cached = forceRefresh ? null : getCachedPlaylistTracks(url);
+            if (cached) {
+                currentListSource = 'spotify';
+                nextSearchPageToken = '';
+                appState.tracks = cached.tracks.map(t => ({ ...t }));
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cached.name;
+                toggleDownloadButtons(false);
+                showResultsView(cached.name);
+                renderTracklist(0);
+                updateRefreshPlaylistBtn(url);
+                addRecentItem({ name: cached.name, type: 'playlist', url, artwork: cached.artwork });
+                addRecentPlaylist({ name: cached.name, url, artwork: cached.artwork });
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+                return;
+            }
+            const items = loadRecentPlaylists();
+            const saved = items.find(it => it.url === url);
+            const artistName = saved ? saved.name : url.slice(ARTIST_SEARCH_URL_PREFIX.length);
+            const artist = await findExactDeezerArtist(artistName);
+            if (artist) {
+                await searchArtistPlaylist(artist, forceRefresh);
+                return;
+            }
+            const resultsStatusText = document.getElementById('resultsStatusText');
+            showResultsView('Risultati');
+            appState.tracks = []; appState.currentIndex = -1;
+            document.getElementById('trackList').innerHTML = '';
+            if (resultsStatusText) {
+                resultsStatusText.classList.remove('hidden');
+                resultsStatusText.innerText = 'Artista non trovato.';
             }
         }
 

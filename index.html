@@ -949,22 +949,33 @@
            search-pill (già position:relative) invece che all'header, così segue la
            pillola indipendentemente da eventuali margini/padding dell'header. */
         .search-suggestions {
+            /* Prima: var(--bg-card, var(--bg-input)), fisso e scuro anche in skin Immersive
+               (dove --bg-card/--bg-input restano colori statici, vedi html.immersive più sotto).
+               Ora var(--bg-main): in Immersive equivale a var(--immersive-color), lo stesso
+               scuro dinamico calcolato dall'artwork che usano già home, lista canzoni e
+               impostazioni - il dropdown resta dello stesso colore di sfondo di tutta l'app
+               invece di essere un nero fisso a sé stante. */
             position:absolute; left:0; right:0; top:calc(100% + 8px);
-            background:var(--bg-card, var(--bg-input)); border-radius:20px;
+            background:var(--bg-main); border-radius:20px;
             box-shadow:0 16px 34px -12px rgba(0,0,0,.6); overflow-y:auto; -webkit-overflow-scrolling:touch;
             max-height:56vh; z-index:60; padding:6px;
         }
         .search-suggestions.hidden { display:none; }
         .suggest-row { display:flex; align-items:center; gap:12px; padding:8px 8px; border-radius:14px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .suggest-row:active { background:rgba(255,255,255,0.07); }
-        .suggest-row .suggest-thumb { width:38px; height:38px; flex-shrink:0; background-size:cover; background-position:center; background-color:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:13px; }
-        .suggest-row.is-artist .suggest-thumb { border-radius:50%; }
-        .suggest-row.is-track .suggest-thumb { border-radius:8px; }
+        /* Tondo per entrambi i tipi (prima i brani avevano un quadrato 8px-radius, incoerente
+           col resto dell'app dove ogni riga - track-row, artist-row - usa un cerchio): brani
+           44px, come le miniature di TUTTE le righe canzone dell'app (track-row in
+           renderTracklist, home); artisti un tondo più grande (52px, come .artist-row) per
+           distinguerli a colpo d'occhio senza tornare al quadrato. */
+        .suggest-row .suggest-thumb { width:44px; height:44px; border-radius:50%; flex-shrink:0; background-size:cover; background-position:center; background-color:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:13px; }
+        .suggest-row.is-artist .suggest-thumb { width:52px; height:52px; }
         .suggest-row .suggest-meta { flex:1; min-width:0; }
         .suggest-row .suggest-title { font-size:13.5px; font-weight:700; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .suggest-row .suggest-sub { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .suggest-row .suggest-icon { width:14px; text-align:center; color:var(--text-muted); font-size:11px; flex-shrink:0; opacity:0.7; }
         .suggest-divider { margin:2px 8px 4px; padding-top:4px; font-size:10.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); }
+        .suggest-loading, .suggest-empty { display:flex; align-items:center; justify-content:center; gap:8px; padding:26px 8px; color:var(--text-muted); font-size:12.5px; font-weight:600; }
         /* ================= HEADER: results (freccia indietro + titolo) ================= */
         /* Stesso discorso dell'header home: primo figlio di #resultsView, sticky in cima,
            sfondo/dissolvenza via pseudo-elementi propri (vedi ::before/::after sotto). */
@@ -3098,15 +3109,20 @@
 
             // La stessa barra di ricerca serve sia per cercare su YouTube (testo libero)
             // sia per importare una playlist Spotify (se viene incollato un link/URI playlist).
+            // NB: una ricerca testuale libera NON salta più a resultsView (vedi
+            // performInlineYoutubeSearch qui sotto) - resultsView resta riservata solo alle
+            // playlist vere e proprie (artista cliccato, playlist Spotify importata). Per
+            // questo qui NON chiamiamo più hideSearchSuggestions() incondizionatamente: il
+            // dropdown deve restare aperto, sostituendo i suggerimenti live con i risultati.
             function handleSearchSubmit() {
-                hideSearchSuggestions();
                 const value = searchInput.value.trim();
-                if (!value) { return; }
+                if (!value) { hideSearchSuggestions(); return; }
                 if (isSpotifyPlaylistLink(value) || isSpotifyArtistLink(value)) {
+                    hideSearchSuggestions();
                     importSpotifyPlaylist(value);
                     searchInput.value = '';
                 } else {
-                    performSearch(false);
+                    performInlineYoutubeSearch(value);
                 }
             }
 
@@ -3184,7 +3200,7 @@
                                 <div class="suggest-title">${escapeHtml(t.title)}</div>
                                 <div class="suggest-sub">${escapeHtml(artistName)}</div>
                             </div>
-                            <i class="fa-solid fa-magnifying-glass suggest-icon"></i>
+                            <i class="fa-solid fa-play suggest-icon"></i>
                         </div>
                     `);
                 });
@@ -3203,6 +3219,13 @@
                         searchArtistPlaylist(artist);
                     });
                 });
+                // Tap su un brano suggerito: riproduzione IMMEDIATA del match più preciso
+                // possibile, niente più passaggio da performSearch/resultsView. Il brano
+                // Deezer (senza id YouTube) va a loadTrack esattamente come un brano di una
+                // playlist Spotify appena importata (stesso campo spotifyImport): la
+                // risoluzione YouTube (query "titolo artista song", 1 solo risultato, vedi
+                // resolveYoutubeIdForTrack) parte da sola dentro loadTrack, e l'unico brano
+                // passato come sourceTracks diventa la coda in ascolto (nowPlayingTracks).
                 searchSuggestionsEl.querySelectorAll('.suggest-row.is-track').forEach(row => {
                     row.addEventListener('click', () => {
                         const track = tracks[parseInt(row.dataset.idx, 10)];
@@ -3211,8 +3234,78 @@
                         hideSearchSuggestions();
                         searchInput.blur();
                         const artistName = (track.artist && track.artist.name) || '';
+                        const cover = (track.album && (track.album.cover_medium || track.album.cover_big || track.album.cover_small)) || null;
                         searchInput.value = `${track.title} ${artistName}`.trim();
-                        performSearch(false);
+                        const playableTrack = { title: track.title, channel: artistName, thumbnail: cover, spotifyImport: true };
+                        loadTrack(0, [playableTrack]);
+                    });
+                });
+            }
+
+            // ============== RICERCA YOUTUBE GREZZA DA INVIO (stesso dropdown) ==============
+            // Prima, premere Invio senza toccare un suggerimento saltava a resultsView
+            // (performSearch, currentListSource:'youtube'): resultsView ora è riservata solo
+            // alle playlist vere e proprie (artista cliccato, playlist Spotify importata). Qui
+            // invece i risultati YouTube grezzi (stesso Worker/query di sempre) appaiono nello
+            // STESSO dropdown dei suggerimenti live, con lo stesso stile di riga - solo che, a
+            // differenza dei suggerimenti Deezer, hanno già un id YouTube vero: il tap avvia la
+            // riproduzione subito (loadTrack), diventando anche la coda per avanti/indietro.
+            let inlineSearchToken = 0;
+            async function performInlineYoutubeSearch(query) {
+                if (!searchSuggestionsEl) return;
+                // Invalida sia un'eventuale ricerca grezza precedente ancora in volo sia il
+                // debounce/richiesta Deezer dei suggerimenti live: altrimenti una risposta in
+                // ritardo di uno dei due potrebbe sovrascrivere questi risultati un attimo dopo.
+                const myToken = ++inlineSearchToken;
+                ++suggestRequestToken;
+                clearTimeout(suggestDebounceTimer);
+
+                searchSuggestionsEl.innerHTML = '<div class="suggest-loading"><i class="fa-solid fa-spinner fa-spin-pulse"></i></div>';
+                searchSuggestionsEl.classList.remove('hidden');
+
+                const data = await youtubeSearch({ q: query, maxResults: 25 });
+                if (myToken !== inlineSearchToken) return;
+
+                if (!data || !data.items || data.items.length === 0) {
+                    searchSuggestionsEl.innerHTML = '<div class="suggest-empty">Nessun risultato.</div>';
+                    return;
+                }
+
+                const tracks = data.items.map(item => ({
+                    id: item.id.videoId,
+                    title: decodeHtmlEntities(item.snippet.title),
+                    channel: decodeHtmlEntities(item.snippet.channelTitle),
+                    thumbnail: item.snippet.thumbnails.high ? item.snippet.thumbnails.high.url : item.snippet.thumbnails.default.url
+                }));
+
+                renderInlineYoutubeResults(tracks);
+            }
+
+            function renderInlineYoutubeResults(tracks) {
+                if (!searchSuggestionsEl) return;
+                searchSuggestionsEl.innerHTML = tracks.map((t, i) => `
+                    <div class="suggest-row is-track" data-idx="${i}">
+                        <div class="suggest-thumb" style="background-image:url('${(t.thumbnail || '').replace(/'/g, "\\'")}')"></div>
+                        <div class="suggest-meta">
+                            <div class="suggest-title">${escapeHtml(t.title)}</div>
+                            <div class="suggest-sub">${escapeHtml(t.channel)}</div>
+                        </div>
+                        <i class="fa-solid fa-play suggest-icon"></i>
+                    </div>
+                `).join('');
+                searchSuggestionsEl.classList.remove('hidden');
+
+                // I brani grezzi hanno già un id YouTube: nessuna risoluzione da attendere,
+                // loadTrack passa dritto a player.loadVideoById(). L'intero array diventa
+                // sourceTracks/nowPlayingTracks, quindi avanti/indietro dal mini-player
+                // continuano a scorrere questi stessi risultati anche a dropdown chiuso.
+                searchSuggestionsEl.querySelectorAll('.suggest-row').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const idx = parseInt(row.dataset.idx, 10);
+                        hapticFeedback();
+                        hideSearchSuggestions();
+                        searchInput.blur();
+                        loadTrack(idx, tracks);
                     });
                 });
             }
@@ -3220,6 +3313,9 @@
             searchInput.addEventListener('input', () => {
                 const query = searchInput.value.trim();
                 clearTimeout(suggestDebounceTimer);
+                // Se una ricerca grezza (Invio) era ancora in volo, la sua risposta non deve
+                // più sovrascrivere il dropdown ora che l'utente sta riscrivendo.
+                ++inlineSearchToken;
 
                 if (!query || query.length < 2 || isSpotifyPlaylistLink(query) || isSpotifyArtistLink(query)) {
                     hideSearchSuggestions();
@@ -3269,6 +3365,13 @@
                 // uno swipe: se era un trascinamento, ignoriamo il click e non apriamo la sheet.
                 if (miniPlayerWasDragged) {
                     miniPlayerWasDragged = false;
+                    return;
+                }
+                // Stesso discorso per il click che segue il rilascio dopo i 4s di pressione
+                // prolungata (vedi startMiniLongPress): la vibrazione/apertura del modal di
+                // correzione sono già scattate a parte, non deve aprire ANCHE la sheet.
+                if (miniLongPressFired) {
+                    miniLongPressFired = false;
                     return;
                 }
                 openNowPlayingSheet();
@@ -4244,6 +4347,7 @@
                 miniCurrentY = y - miniStartY;
 
                 if (Math.abs(miniCurrentX) > MINI_DRAG_CLICK_THRESHOLD || Math.abs(miniCurrentY) > MINI_DRAG_CLICK_THRESHOLD) {
+                    if (!miniPlayerWasDragged) cancelMiniLongPress();
                     miniPlayerWasDragged = true;
                 }
 
@@ -4336,6 +4440,41 @@
             });
             window.addEventListener('mousemove', (e) => moveMiniDrag(e.clientX, e.clientY));
             window.addEventListener('mouseup', endMiniDrag);
+
+            // ============== CORREZIONE BRANO DAL MINI-PLAYER (pressione prolungata 4s) ==============
+            // Molte riproduzioni ora partono senza mai passare da una lista visibile a schermo
+            // (suggerimento in dropdown, risultato grezzo YouTube dal dropdown): non c'è quindi
+            // sempre una riga su cui fare pressione prolungata per correggere un match sbagliato
+            // (vedi track-row in renderTracklist). Il mini-player invece è SEMPRE presente
+            // durante l'ascolto: stessa soglia di 4s, stesso modal (openCorrectSongModal), ma
+            // riusando la coda/indice ATTUALMENTE in ascolto (nowPlayingTracks/nowPlayingIndex)
+            // invece di quelli di una lista sfogliata a schermo - così funziona qualunque sia
+            // stata l'origine della riproduzione.
+            const MINI_LONG_PRESS_MS = 4000;
+            let miniPressTimer = null;
+            let miniLongPressFired = false;
+            const startMiniLongPress = () => {
+                miniLongPressFired = false;
+                clearTimeout(miniPressTimer);
+                miniPressTimer = setTimeout(() => {
+                    miniLongPressFired = true;
+                    miniPressTimer = null;
+                    if (!nowPlayingTracks.length || nowPlayingIndex < 0) return;
+                    hapticFeedback();
+                    openCorrectSongModal(nowPlayingTracks[nowPlayingIndex], nowPlayingIndex, nowPlayingTracks);
+                }, MINI_LONG_PRESS_MS);
+            };
+            function cancelMiniLongPress() {
+                if (miniPressTimer) { clearTimeout(miniPressTimer); miniPressTimer = null; }
+            }
+            miniPlayer.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('#miniPlayerControls') || e.target.closest('#miniProgressBarArea')) return;
+                startMiniLongPress();
+            });
+            miniPlayer.addEventListener('pointerup', cancelMiniLongPress);
+            miniPlayer.addEventListener('pointerleave', cancelMiniLongPress);
+            miniPlayer.addEventListener('pointercancel', cancelMiniLongPress);
+            miniPlayer.addEventListener('contextmenu', (e) => e.preventDefault());
 
             let titleStartX = 0, titleCurrentX = 0, isDraggingTitle = false;
             const startTitleDrag = (x) => {

@@ -6175,7 +6175,8 @@
         // considerati troppo pochi (caso verificato: artisti di nicchia come Florinda
         // hanno solo 2 brani in classifica anche se il catalogo reale è più ampio, la
         // classifica "top" di Deezer riflette gli ascolti sulla piattaforma, non il
-        // catalogo intero) e scatta il fallback sulla discografia completa sotto.
+        // catalogo intero) e scatta il fallback di ricerca YouTube sotto
+        // (fetchYoutubeArtistTracks).
         const ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD = 6;
 
         // Nome e copertina via oEmbed ufficiale di Spotify (endpoint documentato,
@@ -6279,49 +6280,50 @@
 
         // Confronto "robusto" fra due titoli di brano, stessa logica di normalizeArtistName
         // qui sopra: serve solo a scartare doppioni fra i "top brani" già presi e quelli
-        // ripescati dagli album sotto (stesso brano che compare sia in classifica sia in
-        // un album/singolo), non a un matching semantico.
+        // ripescati dal fallback di ricerca sotto (stesso brano trovato da entrambe le
+        // fonti), non a un matching semantico.
         function normalizeTrackTitle(title) {
             return normalizeArtistName(title);
         }
 
-        // Fallback per artisti di nicchia: quando i "top brani" ufficiali (endpoint
-        // /artist/{id}/top, pensato per riflettere gli ascolti reali, vedi sopra) sono
-        // troppo pochi, ripeschiamo l'intera discografia andando album per album
-        // (/artist/{id}/albums poi /album/{id}/tracks per ciascuno) - più lento e più
-        // richieste, per questo usato solo sotto ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD
-        // e non sempre. Le richieste per i singoli album partono in parallelo (Promise.
-        // all): la Deezer API pubblica tollera comodamente le decine di chiamate che
-        // risultano anche per artisti con svariati album/singoli.
-        async function fetchDeezerArtistDiscographyTracks(artistId, artistName) {
+        // Fallback per artisti di nicchia: quando i "top brani" ufficiali Deezer sono
+        // troppo pochi, prima si tentava di ripescare l'intera discografia andando album
+        // per album (funzione ora rimossa) - ma per Florinda quell'approccio ha portato
+        // dentro brani di tutt'altro genere (musica stock/chillout genericamente
+        // etichettata "Florinda" su Deezer, verificato: copertine "Hillwave Miami"
+        // ripetute identiche su più "album", chiaro segnale di un catalogo di libreria
+        // musicale e non di una vera discografia). Deezer aggrega quei brani sotto lo
+        // stesso ID artista, quindi filtrare lì non bastava.
+        // Al posto di fidarci ciecamente della struttura artista/album di Deezer,
+        // rifacciamo una VERA ricerca (stessa API usata per la ricerca testuale
+        // normale, vedi youtubeSearch/performSearch) per il nome dell'artista, e
+        // teniamo solo i video il cui canale richiama chiaramente quel nome - incluso
+        // il pattern "Nome - Topic", il canale automatico che YouTube genera per ogni
+        // artista distribuito su piattaforme come Believe/DistroKid a partire dai
+        // brani caricati, spesso l'unica fonte affidabile proprio per chi non ha un
+        // canale "ufficiale" personale.
+        async function fetchYoutubeArtistTracks(artistName, limit = 20) {
             try {
-                const albumsRes = await jsonpRequest(`https://api.deezer.com/artist/${artistId}/albums?limit=50`);
-                const albums = (albumsRes && Array.isArray(albumsRes.data)) ? albumsRes.data : [];
-                if (albums.length === 0) return [];
+                const data = await youtubeSearch({ q: artistName, maxResults: 25 });
+                if (!data || !Array.isArray(data.items)) return [];
+                const target = normalizeArtistName(artistName);
+                if (!target) return [];
 
-                const perAlbum = await Promise.all(albums.map(async album => {
-                    try {
-                        const res = await jsonpRequest(`https://api.deezer.com/album/${album.id}/tracks`);
-                        const items = (res && Array.isArray(res.data)) ? res.data : [];
-                        const cover = album.cover_xl || album.cover_big || album.cover_medium || null;
-                        return items
-                            .filter(t => t && t.title)
-                            .map(t => ({
-                                title: t.title,
-                                artist: (t.artist && t.artist.name) || artistName,
-                                // I singoli brani dell'endpoint /album/{id}/tracks non portano una
-                                // copertina propria (solo l'album la ha): usiamo quella dell'album,
-                                // stessa logica già in uso per i brani importati da playlist Spotify.
-                                thumbnail: cover
-                            }));
-                    } catch (err) {
-                        return [];
-                    }
-                }));
-
-                return perAlbum.flat();
+                return data.items
+                    .filter(item => {
+                        const channelRaw = decodeHtmlEntities(item.snippet?.channelTitle || '');
+                        const channel = normalizeArtistName(channelRaw.replace(/-?\s*topic$/i, ''));
+                        return channel === target || channel.includes(target) || target.includes(channel);
+                    })
+                    .slice(0, limit)
+                    .map(item => ({
+                        id: item.id.videoId,
+                        title: decodeHtmlEntities(item.snippet.title),
+                        artist: decodeHtmlEntities(item.snippet.channelTitle),
+                        thumbnail: item.snippet.thumbnails.high ? item.snippet.thumbnails.high.url : item.snippet.thumbnails.default.url
+                    }));
             } catch (err) {
-                console.warn('Impossibile recuperare la discografia Deezer:', err);
+                console.warn('Impossibile recuperare brani YouTube per l\'artista:', err);
                 return [];
             }
         }
@@ -6678,13 +6680,14 @@
                 let rawTracks = await fetchDeezerArtistTopTracksById(artist.id, artist.name, ARTIST_TOP_TRACKS_COUNT);
 
                 // Artista di nicchia: i "top brani" ufficiali sono pochi (riflettono gli
-                // ascolti reali su Deezer, non il catalogo) - ripeschiamo l'intera
-                // discografia album per album e la uniamo, scartando i doppioni già
-                // presenti fra i top brani (stesso titolo, confronto normalizzato).
+                // ascolti reali su Deezer, non il catalogo) - rifacciamo una ricerca vera
+                // su YouTube per il nome dell'artista (vedi fetchYoutubeArtistTracks) e
+                // aggiungiamo solo i video il cui canale corrisponde, scartando i doppioni
+                // già presenti fra i top brani (stesso titolo, confronto normalizzato).
                 if (rawTracks.length < ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD) {
-                    const discographyTracks = await fetchDeezerArtistDiscographyTracks(artist.id, artist.name);
+                    const searchTracks = await fetchYoutubeArtistTracks(artist.name, ARTIST_TOP_TRACKS_COUNT * 2);
                     const seen = new Set(rawTracks.map(t => normalizeTrackTitle(t.title)));
-                    for (const t of discographyTracks) {
+                    for (const t of searchTracks) {
                         const key = normalizeTrackTitle(t.title);
                         if (seen.has(key)) continue;
                         seen.add(key);
@@ -6695,6 +6698,20 @@
                 if (rawTracks.length === 0) throw new Error('Nessun brano trovato per questo artista.');
 
                 appState.tracks = rawTracks.map(t => {
+                    // I brani che arrivano già con un id (fallback di ricerca YouTube, vedi
+                    // fetchYoutubeArtistTracks) sono video reali già individuati: nessun
+                    // bisogno di passare dalla cache locale, sono già pronti per la riproduzione.
+                    if (t.id) {
+                        return {
+                            id: t.id,
+                            title: t.title,
+                            channel: t.artist,
+                            thumbnail: t.thumbnail || null,
+                            artworkFetched: true,
+                            resolved: true,
+                            spotifyImport: false
+                        };
+                    }
                     const cachedTrack = getCachedTrack(t.title, t.artist);
                     const thumbnail = t.thumbnail || cachedTrack?.thumbnail || null;
                     return {

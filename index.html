@@ -5711,9 +5711,10 @@
             const isFresh = cache && (Date.now() - cache.ts) < CHARTS_CACHE_TTL_MS;
 
             if (isFresh) {
-                renderChartsSection(cache.it?.charts);
+    renderChartsSection(cache.it?.charts);
                 renderArtistsSection('artistsItSection', 'artistsItCol', cache.it?.artists);
                 renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', cache.global?.artists);
+                fixupChartThumbnails(cache.it?.charts);
                 return;
             }
 
@@ -5727,6 +5728,51 @@
             renderArtistsSection('artistsGlobalSection', 'artistsGlobalCol', global?.artists);
 
             if (it || global) saveChartsCache({ ts: Date.now(), it, global });
+            fixupChartThumbnails(it?.charts);
+        }
+
+        // Il Worker a volte restituisce la stessa miniatura "ufficiale" per due classifiche
+        // diverse (es. "Video più visti del giorno" e "I 100 video musicali più visti"), o
+        // nessuna del tutto (cerchio nero/vuoto). Per ognuna delle classifiche coinvolte,
+        // andiamo a prendere in sordina l'artwork del suo primo brano (quasi certamente
+        // diverso da classifica a classifica, a differenza della copertina "di classifica"
+        // fornita dal Worker) e la usiamo come sostituta, sia a schermo sia in cache, così
+        // non serve rifarlo ad ogni apertura entro le 6 ore di TTL.
+        async function fixupChartThumbnails(charts) {
+            if (!Array.isArray(charts) || charts.length < 2) return;
+
+            const seen = new Map(); // url miniatura -> primo indice che la usa
+            const toFix = [];
+            charts.forEach((c, i) => {
+                if (!c.thumbnail) { toFix.push(i); return; }
+                if (seen.has(c.thumbnail)) toFix.push(i);
+                else seen.set(c.thumbnail, i);
+            });
+            if (toFix.length === 0) return;
+
+            let changed = false;
+            for (const i of toFix) {
+                const chart = charts[i];
+                if (!chart?.browseId) continue;
+                const data = await chartsWorkerFetch(`/playlist?browseId=${encodeURIComponent(chart.browseId)}&gl=IT`);
+                const firstThumb = (data?.items || []).find(it => it.thumbnail)?.thumbnail;
+                if (!firstThumb || firstThumb === chart.thumbnail) continue;
+
+                chart.thumbnail = firstThumb;
+                changed = true;
+                const thumbEl = document.querySelector(`#chartsRow .chart-card[data-index="${i}"] .chart-card-thumb`);
+                if (thumbEl) thumbEl.style.backgroundImage = `url('${firstThumb.replace(/'/g, "\\'")}')`;
+            }
+
+            if (!changed) return;
+            const cache = loadChartsCache();
+            if (cache?.it?.charts) {
+                cache.it.charts = cache.it.charts.map(c => {
+                    const updated = charts.find(u => u.browseId === c.browseId);
+                    return updated ? { ...c, thumbnail: updated.thumbnail } : c;
+                });
+                saveChartsCache(cache);
+            }
         }
 
         // Le card orizzontali in cima: una per ciascuna playlist di classifica
@@ -7886,6 +7932,13 @@
                 appState.currentIndex = index;
             }
 
+            // Vero se sourceTracks è la STESSA coda già in ascolto (navigazione avanti/
+            // indietro o ricarica dello stesso brano, es. da correctSong): in quel caso
+            // nowPlayingListType/Key/Title vanno lasciati come sono, appartengono ancora
+            // alla stessa lista. Va calcolato PRIMA di sovrascrivere nowPlayingTracks
+            // qui sotto, altrimenti il confronto sarebbe sempre vero.
+            const isSameQueueContinuation = (sourceTracks === nowPlayingTracks);
+
             // Questo diventa ufficialmente il brano in ascolto: resta valido anche se poi
             // l'utente sfoglia un'altra lista (che sovrascriverà appState.tracks, ma non
             // questa coda).
@@ -7895,6 +7948,15 @@
                 nowPlayingListType = currentListSource;
                 nowPlayingListKey = currentLoadedKey;
                 nowPlayingListTitle = currentLoadedTitle;
+            } else if (!isSameQueueContinuation) {
+                // Coda "isolata" (suggerimento di ricerca, brano recente senza playlist,
+                // risultati grezzi dal dropdown...): non è né la lista sfogliata né la
+                // continuazione della coda precedente, quindi non ha davvero un nome di
+                // playlist. Senza questo reset restava quello del brano/playlist ascoltati
+                // PRIMA, mostrato per errore nella Now Playing Sheet.
+                nowPlayingListType = null;
+                nowPlayingListKey = null;
+                nowPlayingListTitle = '';
             }
             updateNowPlayingHeaderLabel();
 

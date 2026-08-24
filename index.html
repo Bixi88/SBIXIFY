@@ -6171,6 +6171,13 @@
         // un endpoint dedicato ai top brani per artista con conteggio libero.
         const ARTIST_TOP_TRACKS_COUNT = 10;
 
+        // Sotto questa soglia i "top brani" ufficiali Deezer per l'artista sono
+        // considerati troppo pochi (caso verificato: artisti di nicchia come Florinda
+        // hanno solo 2 brani in classifica anche se il catalogo reale è più ampio, la
+        // classifica "top" di Deezer riflette gli ascolti sulla piattaforma, non il
+        // catalogo intero) e scatta il fallback sulla discografia completa sotto.
+        const ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD = 6;
+
         // Nome e copertina via oEmbed ufficiale di Spotify (endpoint documentato,
         // pensato apposta per dare titolo/copertina corretti a chi incorpora un link,
         // usato ad es. da WordPress per generare le anteprime): molto più affidabile dei
@@ -6266,6 +6273,55 @@
                     }));
             } catch (err) {
                 console.warn('Impossibile recuperare i top brani Deezer:', err);
+                return [];
+            }
+        }
+
+        // Confronto "robusto" fra due titoli di brano, stessa logica di normalizeArtistName
+        // qui sopra: serve solo a scartare doppioni fra i "top brani" già presi e quelli
+        // ripescati dagli album sotto (stesso brano che compare sia in classifica sia in
+        // un album/singolo), non a un matching semantico.
+        function normalizeTrackTitle(title) {
+            return normalizeArtistName(title);
+        }
+
+        // Fallback per artisti di nicchia: quando i "top brani" ufficiali (endpoint
+        // /artist/{id}/top, pensato per riflettere gli ascolti reali, vedi sopra) sono
+        // troppo pochi, ripeschiamo l'intera discografia andando album per album
+        // (/artist/{id}/albums poi /album/{id}/tracks per ciascuno) - più lento e più
+        // richieste, per questo usato solo sotto ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD
+        // e non sempre. Le richieste per i singoli album partono in parallelo (Promise.
+        // all): la Deezer API pubblica tollera comodamente le decine di chiamate che
+        // risultano anche per artisti con svariati album/singoli.
+        async function fetchDeezerArtistDiscographyTracks(artistId, artistName) {
+            try {
+                const albumsRes = await jsonpRequest(`https://api.deezer.com/artist/${artistId}/albums?limit=50`);
+                const albums = (albumsRes && Array.isArray(albumsRes.data)) ? albumsRes.data : [];
+                if (albums.length === 0) return [];
+
+                const perAlbum = await Promise.all(albums.map(async album => {
+                    try {
+                        const res = await jsonpRequest(`https://api.deezer.com/album/${album.id}/tracks`);
+                        const items = (res && Array.isArray(res.data)) ? res.data : [];
+                        const cover = album.cover_xl || album.cover_big || album.cover_medium || null;
+                        return items
+                            .filter(t => t && t.title)
+                            .map(t => ({
+                                title: t.title,
+                                artist: (t.artist && t.artist.name) || artistName,
+                                // I singoli brani dell'endpoint /album/{id}/tracks non portano una
+                                // copertina propria (solo l'album la ha): usiamo quella dell'album,
+                                // stessa logica già in uso per i brani importati da playlist Spotify.
+                                thumbnail: cover
+                            }));
+                    } catch (err) {
+                        return [];
+                    }
+                }));
+
+                return perAlbum.flat();
+            } catch (err) {
+                console.warn('Impossibile recuperare la discografia Deezer:', err);
                 return [];
             }
         }
@@ -6619,7 +6675,23 @@
             if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
             try {
-                const rawTracks = await fetchDeezerArtistTopTracksById(artist.id, artist.name, ARTIST_TOP_TRACKS_COUNT);
+                let rawTracks = await fetchDeezerArtistTopTracksById(artist.id, artist.name, ARTIST_TOP_TRACKS_COUNT);
+
+                // Artista di nicchia: i "top brani" ufficiali sono pochi (riflettono gli
+                // ascolti reali su Deezer, non il catalogo) - ripeschiamo l'intera
+                // discografia album per album e la uniamo, scartando i doppioni già
+                // presenti fra i top brani (stesso titolo, confronto normalizzato).
+                if (rawTracks.length < ARTIST_DISCOGRAPHY_FALLBACK_THRESHOLD) {
+                    const discographyTracks = await fetchDeezerArtistDiscographyTracks(artist.id, artist.name);
+                    const seen = new Set(rawTracks.map(t => normalizeTrackTitle(t.title)));
+                    for (const t of discographyTracks) {
+                        const key = normalizeTrackTitle(t.title);
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        rawTracks.push(t);
+                    }
+                }
+
                 if (rawTracks.length === 0) throw new Error('Nessun brano trovato per questo artista.');
 
                 appState.tracks = rawTracks.map(t => {

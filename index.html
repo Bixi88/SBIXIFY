@@ -1754,7 +1754,7 @@
                     <div class="quick-eyebrow">Playlist</div>
                     <div id="recentGrid" class="quick-grid hidden"></div>
                     <div id="recentTracksSection" class="hidden">
-                        <div class="quick-eyebrow">Canzoni</div>
+                        <div class="quick-eyebrow">Canzoni recenti</div>
                         <div id="recentTracksCol" class="tracks-col"></div>
                     </div>
 
@@ -2096,12 +2096,6 @@
                     <span id="modalApiBadgeError" class="hidden text-[10px] font-bold text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">Non disponibile</span>
                 </div>
                 <p class="text-[10px] custom-text-muted leading-snug">L'app cerca i brani su YouTube tramite un piccolo server dedicato (Cloudflare Workers, piano gratuito), senza bisogno di alcuna chiave API.</p>
-            </div>
-
-            <div class="mt-6 border-t border-white/5 pt-4">
-                <label class="block text-xs font-bold uppercase tracking-wider custom-text-muted mb-2">Playlist Recenti</label>
-                <div id="settingsPlaylistList" class="flex flex-col gap-1.5"></div>
-                <p id="settingsPlaylistEmpty" class="hidden text-xs custom-text-muted italic py-2">Nessuna playlist recente.</p>
             </div>
 
             <div class="flex items-center justify-end space-x-3 mt-6 border-t border-white/5 pt-4">
@@ -3233,9 +3227,12 @@
                         hapticFeedback();
                         hideSearchSuggestions();
                         searchInput.blur();
+                        // Il brano parte subito senza passare da resultsView (vedi commento
+                        // sopra): la barra di ricerca in home va quindi ripulita qui, altrimenti
+                        // resta con il testo digitato anche dopo che la canzone è già partita.
+                        searchInput.value = '';
                         const artistName = (track.artist && track.artist.name) || '';
                         const cover = (track.album && (track.album.cover_medium || track.album.cover_big || track.album.cover_small)) || null;
-                        searchInput.value = `${track.title} ${artistName}`.trim();
                         const playableTrack = { title: track.title, channel: artistName, thumbnail: cover, spotifyImport: true };
                         loadTrack(0, [playableTrack]);
                         // Stesso pattern di openRecentTrack: aspetta l'artwork pronta (fino a un
@@ -3309,6 +3306,9 @@
                         hapticFeedback();
                         hideSearchSuggestions();
                         searchInput.blur();
+                        // Anche qui si resta in home (niente resultsView): la barra va ripulita
+                        // dopo il tap, stesso motivo del blocco Deezer poco sopra.
+                        searchInput.value = '';
                         loadTrack(idx, tracks);
                         openNowPlayingSheetWhenArtworkReady();
                     });
@@ -5155,13 +5155,13 @@
             if (idx === -1) return;
             items[idx] = { ...items[idx], name, artwork };
             saveRecentPlaylists(items);
-            renderSettingsPlaylistList();
         }
 
-        // --- SETTINGS: "Playlist Recenti" ---
-        // Elenco dedicato (separato dai "Recenti" mostrati in home, che mischiano brani e
-        // playlist e restano limitati a RECENT_MAX): qui teniamo fino a 9 playlist, mostrate
-        // nel pannello Impostazioni, ognuna cancellabile singolarmente con la X.
+        // --- Elenco INTERNO "Playlist Recenti" (non più mostrato in UI) ---
+        // Separato dai "Recenti" mostrati in home, che mischiano brani e playlist e restano
+        // limitati a RECENT_MAX: qui si tengono fino a 9 playlist, usate solo internamente
+        // dall'auto-refresh in sordina (vedi autoRefreshStalePlaylists), non più mostrate nel
+        // pannello Impostazioni.
         const RECENT_PLAYLISTS_KEY = 'sbixify_recent_playlists';
         const RECENT_PLAYLISTS_MAX = 9;
 
@@ -5190,13 +5190,11 @@
             // Oltre le 9, le voci più vecchie vengono tolte dalla cache.
             items = items.slice(0, RECENT_PLAYLISTS_MAX);
             saveRecentPlaylists(items);
-            renderSettingsPlaylistList();
         }
 
         function removeRecentPlaylist(url) {
             const items = loadRecentPlaylists().filter(it => it.url !== url);
             saveRecentPlaylists(items);
-            renderSettingsPlaylistList();
 
             // Sincronizza anche i "Recenti" mostrati in home: sono una cache separata,
             // quindi senza questo la playlist rimossa dal menu restava comunque visibile lì.
@@ -5205,62 +5203,10 @@
             renderRecentHome();
         }
 
-        function renderSettingsPlaylistList() {
-            const list = document.getElementById('settingsPlaylistList');
-            const empty = document.getElementById('settingsPlaylistEmpty');
-            if (!list) return;
-
-            const items = loadRecentPlaylists();
-            if (items.length === 0) {
-                list.innerHTML = '';
-                if (empty) empty.classList.remove('hidden');
-                return;
-            }
-            if (empty) empty.classList.add('hidden');
-
-            list.innerHTML = items.map((it, i) => `
-                <div class="settings-playlist-row" data-url="${escapeHtml(it.url)}">
-                    <div class="settings-playlist-thumb" style="${it.artwork ? `background-image:url('${it.artwork.replace(/'/g, "\\'")}')` : ''}">
-                        ${it.artwork ? '' : '<i class="fa-solid fa-list"></i>'}
-                    </div>
-                    <span class="settings-playlist-name">${escapeHtml(it.name)}</span>
-                    <button class="settings-playlist-remove" data-index="${i}" title="Rimuovi">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-            `).join('');
-
-            list.querySelectorAll('.settings-playlist-row').forEach(row => {
-                row.addEventListener('click', (e) => {
-                    if (e.target.closest('.settings-playlist-remove')) return;
-                    const url = row.dataset.url;
-                    // Stessa eccezione di openRecentItem: una voce "ricerca artista" (vedi
-                    // searchArtistFromHome) non è un import Spotify, rilancia la ricerca.
-                    if (url.startsWith('yt-artist:')) {
-                        const artistName = decodeURIComponent(url.slice('yt-artist:'.length));
-                        searchInput.value = artistName;
-                        performSearch(false);
-                        closeApiModal();
-                        return;
-                    }
-                    openPlaylistByUrl(url);
-                    closeApiModal();
-                });
-            });
-            list.querySelectorAll('.settings-playlist-remove').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const idx = parseInt(btn.dataset.index, 10);
-                    removeRecentPlaylist(items[idx].url);
-                });
-            });
-        }
-
         function openApiModal() {
             const modal = document.getElementById('apiModal');
             if (modal) {
                 modal.classList.add('active');
-                renderSettingsPlaylistList();
             }
         }
 
@@ -5475,8 +5421,9 @@
         });
 
         // Rimuove una voce dai "Recenti" mostrati in home (usata dal tap prolungato + X).
-        // Se la voce è una playlist, ripulisce anche l'elenco dedicato del menu Impostazioni,
-        // così le due liste restano sempre allineate in entrambe le direzioni.
+        // Se la voce è una playlist, ripulisce anche l'elenco interno usato per
+        // l'auto-refresh in sordina (vedi autoRefreshStalePlaylists), così non resta a
+        // scandire una playlist che l'utente ha esplicitamente rimosso dai Recenti.
         function removeRecentItemFromHome(idx, item) {
             let items = loadRecentItems();
             items.splice(idx, 1);
@@ -5485,7 +5432,6 @@
             if (item && item.type === 'playlist' && item.url) {
                 const playlists = loadRecentPlaylists().filter(it => it.url !== item.url);
                 saveRecentPlaylists(playlists);
-                renderSettingsPlaylistList();
             }
 
             renderRecentHome();

@@ -994,10 +994,10 @@
         .home-track-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .home-track-row * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .home-track-row:active { opacity:0.8; }
-        .home-track-row:not(:last-child)::after { content:''; position:absolute; left:66px; right:0; bottom:0; height:1px; background:rgba(255,255,255,0.08); }
+        .home-track-row:not(:last-child)::after { content:''; position:absolute; left:58px; right:0; bottom:0; height:1px; background:rgba(255,255,255,0.08); }
         .home-track-meta { flex:1; min-width:0; }
-        .home-track-meta .t-title { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-main); }
-        .home-track-meta .t-sub { font-size:12.5px; color:var(--text-muted); font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .home-track-meta .t-title { font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-main); }
+        .home-track-meta .t-sub { font-size:11.5px; color:var(--text-muted); font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .home-track-row .track-row-delete {
             width: 30px; height: 30px; border-radius: 50%; flex-shrink:0;
             display: flex; align-items: center; justify-content: center; font-size: 12px;
@@ -1089,9 +1089,16 @@
         .track-row { position:relative; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
         .track-row * { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; -webkit-user-drag:none; user-drag:none; }
         .track-row img { touch-action:manipulation; }
-        .track-row .text-sm { font-size:15px; }
-        .track-row .text-xs { font-size:12.5px; }
-        .track-row::after { content:''; position:absolute; left:64px; right:0; bottom:0; height:1px; background:rgba(243,239,230,0.08); }
+        .track-row .text-sm { font-size:13.5px; }
+        .track-row .text-xs { font-size:11.5px; }
+        .track-row::after { content:''; position:absolute; left:58px; right:0; bottom:0; height:1px; background:rgba(243,239,230,0.08); }
+        /* Card artista in cima ai risultati (prependArtistCard): esclusa dal
+           rimpicciolimento riservato alle righe canzone, mantiene le dimensioni
+           originali (cerchio 64px già invariato) e il divisore alla sua vecchia
+           posizione, coerente col cerchio più grande. */
+        .track-row-artist .text-sm { font-size:15px; }
+        .track-row-artist .text-xs { font-size:12.5px; }
+        .track-row-artist::after { left:76px; }
         .track-row:last-child::after { display:none; }
 
         /* ================= SKIN "IMMERSIVE" (unica skin dell'app, sempre attiva) =================
@@ -5247,7 +5254,7 @@
                 : null;
             col.innerHTML = items.map((it, i) => `
                 <div class="home-track-row${currentPlayingId && it.id === currentPlayingId ? ' playing' : ''}" data-index="${i}">
-                    <div class="w-13 h-13 rounded-full overflow-hidden shrink-0 relative track-thumb-wrap" style="width:52px;height:52px;">
+                    <div class="rounded-full overflow-hidden shrink-0 relative track-thumb-wrap" style="width:44px;height:44px;">
                         <div style="width:100%;height:100%;background-size:cover;background-position:center;background-color:var(--bg-input);${it.thumbnail ? `background-image:url('${it.thumbnail.replace(/'/g, "\\'")}')` : ''}"></div>
                     </div>
                     <div class="home-track-meta">
@@ -6563,7 +6570,7 @@
             const cover = artist.picture_xl || artist.picture_big || artist.picture_medium || null;
 
             const card = document.createElement('div');
-            card.className = 'track-row track-row-enter flex items-center gap-3.5 py-2.5 cursor-pointer transition-colors';
+            card.className = 'track-row track-row-artist track-row-enter flex items-center gap-3.5 py-2.5 cursor-pointer transition-colors';
             card.innerHTML = `
                 <div class="rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-neutral-800" style="width:64px;height:64px;">
                     ${cover ? `<img src="${cover}" class="w-full h-full object-cover" alt="">` : '<i class="fa-solid fa-user text-neutral-500"></i>'}
@@ -7242,7 +7249,7 @@
                 trackRow.style.animationDelay = `${Math.min(index - fromIndex, 20) * 45}ms`;
 
                 trackRow.innerHTML = `
-                    <div class="w-13 h-13 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-neutral-800 relative track-thumb-wrap" style="width:52px;height:52px;">
+                    <div class="rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-neutral-800 relative track-thumb-wrap" style="width:44px;height:44px;">
                         <img id="track-img-${index}" src="${track.thumbnail || (track.id ? `https://img.youtube.com/vi/${track.id}/mqdefault.jpg` : '')}" class="w-full h-full object-cover track-thumb-img" alt="" onload="this.classList.add('loaded')">
                         ${!track.id ? '<i class="fa-brands fa-spotify absolute bottom-0.5 right-0.5 text-[10px] text-[var(--accent)] drop-shadow"></i>' : ''}
                     </div>

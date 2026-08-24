@@ -3238,6 +3238,10 @@
                         searchInput.value = `${track.title} ${artistName}`.trim();
                         const playableTrack = { title: track.title, channel: artistName, thumbnail: cover, spotifyImport: true };
                         loadTrack(0, [playableTrack]);
+                        // Stesso pattern di openRecentTrack: aspetta l'artwork pronta (fino a un
+                        // massimo) prima di far salire la sheet, così l'animazione non parte "a
+                        // vuoto" con ancora la copertina del brano precedente.
+                        openNowPlayingSheetWhenArtworkReady();
                     });
                 });
             }
@@ -3306,6 +3310,7 @@
                         hideSearchSuggestions();
                         searchInput.blur();
                         loadTrack(idx, tracks);
+                        openNowPlayingSheetWhenArtworkReady();
                     });
                 });
             }

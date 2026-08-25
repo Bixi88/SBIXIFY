@@ -3668,6 +3668,17 @@
             checkAndApplyMarquee();
         });
 
+        // Se l'utente tocca qualcos'altro PRIMA che l'apertura ritardata (vedi
+        // openNowPlayingSheetWhenArtworkReady) scatti, quell'apertura va annullata invece di
+        // spuntare più tardi "a sorpresa" mentre si sta facendo altro - scollegata dal tocco
+        // che l'ha innescata e, capitando magari mentre è in corso un'altra transizione di
+        // vista, spesso priva della sua animazione.
+        let sheetAutoOpenGen = 0;
+        document.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('#miniPlayer, #nowPlayingSheet')) return;
+            sheetAutoOpenGen++;
+        }, true);
+
         function openNowPlayingSheet() {
             // Riparte sempre dalla posizione reale attuale (utile se arriva subito dopo un
             // trascinamento interrotto a metà), animando da lì fino a completamente aperta.
@@ -3692,8 +3703,12 @@
         // prima canzone riprodotta non si vede più il placeholder grigio lampeggiare prima
         // che la copertina compaia. Il timeout evita che una rete lenta blocchi l'apertura.
         function openNowPlayingSheetWhenArtworkReady(maxWaitMs = 700) {
+            const myGen = sheetAutoOpenGen;
             const timeout = new Promise((resolve) => setTimeout(resolve, maxWaitMs));
             Promise.race([sheetArtworkReadyPromise, timeout]).then(() => {
+                // Se nel frattempo l'utente ha toccato qualcos'altro (vedi sheetAutoOpenGen
+                // sopra), questa apertura è superata: non farla comparire tardi e a sorpresa.
+                if (myGen !== sheetAutoOpenGen) return;
                 openNowPlayingSheet();
             });
         }
@@ -4359,7 +4374,14 @@
             // farebbe rimbalzare continuamente il gesto tra le due modalità, con lo sheet che
             // si muove a scatti invece di seguire il dito in modo fluido durante lo swipe in alto.
             let dragDirection = null;
-            const DIRECTION_LOCK_THRESHOLD = 8; // px minimi di movimento prima di fissare la direzione
+            // Sotto questa soglia è normale tremore del dito durante un tap, non un vero
+            // trascinamento: prima usavamo due soglie separate (6px per "è un trascinamento,
+            // blocca il click" e 8px per "blocca anche la direzione") e la prima scattava quasi
+            // sempre per prima su schermo reale, marcando come trascinamento anche un tap fermo
+            // e impedendo per sempre al click di aprire la sheet (bisognava sempre fare swipe).
+            // Ora è un'unica soglia: solo quando il movimento è abbastanza reale da fissare una
+            // direzione lo consideriamo un vero trascinamento.
+            const DIRECTION_LOCK_THRESHOLD = 10; // px minimi di movimento prima di fissare la direzione e considerarlo un vero trascinamento (non un tap)
             const startMiniDrag = (x, y, target) => {
                 if (target.closest('#miniPlayerControls') || target.closest('#miniProgressBarArea')) return;
                 isDraggingMini = true;
@@ -4378,21 +4400,20 @@
             // testo che sparisce troppo presto a sinistra o resta visibile fin troppo vicino al pulsante a destra.
             const MINI_TEXT_MAX_OFFSET = 40; // px massimi di scorrimento del testo
             const MINI_TEXT_FADE_DISTANCE = 55; // px di trascinamento dito dopo i quali il testo è invisibile
-            const MINI_DRAG_CLICK_THRESHOLD = 6; // px oltre i quali è un vero trascinamento, non un tap
 
             const moveMiniDrag = (x, y) => {
                 if (!isDraggingMini) return;
                 miniCurrentX = x - miniStartX;
                 miniCurrentY = y - miniStartY;
 
-                if (Math.abs(miniCurrentX) > MINI_DRAG_CLICK_THRESHOLD || Math.abs(miniCurrentY) > MINI_DRAG_CLICK_THRESHOLD) {
-                    if (!miniPlayerWasDragged) cancelMiniLongPress();
-                    miniPlayerWasDragged = true;
-                }
-
                 if (!dragDirection) {
                     if (Math.abs(miniCurrentX) > DIRECTION_LOCK_THRESHOLD || Math.abs(miniCurrentY) > DIRECTION_LOCK_THRESHOLD) {
                         dragDirection = Math.abs(miniCurrentX) > Math.abs(miniCurrentY) ? 'horizontal' : 'vertical';
+                        // Solo ORA il movimento è abbastanza reale da poterlo considerare un vero
+                        // trascinamento e non il tremore naturale di un tap: qui, non prima,
+                        // blocchiamo il click che seguirà e annulliamo l'eventuale pressione lunga.
+                        if (!miniPlayerWasDragged) cancelMiniLongPress();
+                        miniPlayerWasDragged = true;
                     } else {
                         return; // Movimento troppo piccolo per decidere: aspetta il prossimo evento.
                     }

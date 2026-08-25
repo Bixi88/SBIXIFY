@@ -1065,7 +1065,7 @@
         .chart-card { width:100%; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
         .chart-card:active .chart-card-thumb { transform:scale(0.96); }
         .chart-card .chart-card-thumb { width:100%; aspect-ratio:1/1; border-radius:50%; background-size:cover; background-position:center; background-color:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); }
-        .chart-card .chart-card-label { margin-top:9px; width:100%; text-align:center; font-size:12.5px; font-weight:700; line-height:1.25; color:var(--text-main); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .chart-card .chart-card-label { margin-top:9px; width:100%; text-align:center; font-size:12.5px; font-weight:700; line-height:1.25; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .artists-col { padding:2px 24px 8px; }
         .artist-row { display:flex; align-items:center; gap:14px; padding:10px 2px; position:relative; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .artist-row:active { opacity:0.8; }
@@ -1080,7 +1080,7 @@
         #chartsSection:not(.hidden), #artistsItSection:not(.hidden), #artistsGlobalSection:not(.hidden) { display:block; }
         .qcard.latest .circle { box-shadow:0 10px 22px -8px rgba(0,0,0,.5); }
         .qcard.latest .name { color:var(--accent); }
-        .qcard .name { font-size:12.5px; font-weight:600; text-align:center; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; color:var(--text-main); }
+        .qcard .name { font-size:12.5px; font-weight:600; text-align:center; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-main); }
         .qcard .qcard-delete {
             position: absolute; bottom: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center; font-size: 11px;
@@ -6281,15 +6281,17 @@
         // hanno un markup dedicato. Tutti gli ALTRI testi "a riga singola con puntini"
         // dell'app (titolo/artista nella lista canzoni, nome playlist nell'header Now
         // Playing, sottotitolo mini player, righe Top Artisti, righe "Canzoni" in home,
-        // elenco Playlist Recenti nelle Impostazioni...) condividono le stesse classi
-        // CSS di troncamento (Tailwind ".truncate" o le equivalenti custom qui sotto):
-        // invece di richiamare una funzione dedicata da OGNI punto del codice che scrive
-        // uno di questi testi (rischiando di dimenticarne qualcuno), un MutationObserver
-        // sull'intero documento intercetta da solo ogni cambio di contenuto e applica lo
-        // stesso scorrimento a loop del titolo grande, dove serve. Escluse di proposito le
-        // etichette pensate per andare su due righe (nomi delle card Recenti/Classifiche
-        // in home, "line-clamp:2"): lì il troncamento a 2 righe resta quello attuale.
-        const MARQUEE_TARGET_SELECTOR = '.truncate, .rt, .t-title, .t-sub, .a-name, .a-sub, .settings-playlist-name';
+        // elenco Playlist Recenti nelle Impostazioni, nomi delle card Playlist/Recenti e
+        // Classifiche in home...) condividono le stesse classi CSS di troncamento
+        // (Tailwind ".truncate" o le equivalenti custom qui sotto): invece di richiamare
+        // una funzione dedicata da OGNI punto del codice che scrive uno di questi testi
+        // (rischiando di dimenticarne qualcuno), un MutationObserver sull'intero
+        // documento intercetta da solo ogni cambio di contenuto e applica lo stesso
+        // scorrimento a loop del titolo grande, dove serve. Le card Playlist/Recenti e
+        // Classifiche in home NON usano più il vecchio troncamento a 2 righe
+        // (line-clamp:2): sono ora testo su una riga sola, così rientrano in questo
+        // stesso meccanismo generico invece di avere un comportamento a parte.
+        const MARQUEE_TARGET_SELECTOR = '.truncate, .rt, .t-title, .t-sub, .a-name, .a-sub, .settings-playlist-name, .qcard .name, .chart-card-label';
         let marqueeMutationGuard = false;
 
         function activateMarquee(el) {
@@ -6870,12 +6872,13 @@
         }
 
         // Nome "pulito" per un artista: a differenza delle playlist non serve scartare
-        // "by Autore" (non esiste), solo la dicitura "Spotify" e il limite a 3 parole
-        // richiesto ovunque nell'app.
+        // "by Autore" (non esiste), solo la dicitura "Spotify" e il limite a 5 parole
+        // richiesto ovunque nell'app (portato da 3 a 5 su richiesta esplicita: con 3
+        // parole nomi comuni come "What Are The Odds" perdevano l'ultima parola).
         function cleanSpotifyArtistName(name) {
             let cleaned = (name || '').trim();
             cleaned = cleaned.replace(/\bspotify\b/gi, '').replace(/\s{2,}/g, ' ').trim();
-            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
+            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 5).join(' ');
             return cleaned || 'Artista';
         }
 
@@ -6883,10 +6886,13 @@
         // vero, un riferimento all'autore/creatore (es. "Nome - playlist by Autore",
         // "Nome - Autore", "Nome by Autore") e la dicitura "Spotify". Li scartiamo
         // entrambi. Poi, richiesta esplicita: il nome della playlist non deve MAI superare
-        // le 3 parole in nessuna schermata dell'app (titolo risultati, etichetta Now
-        // Playing/Immersive, Recenti in home, elenco Impostazioni...) - tagliato qui, alla
-        // fonte, così ogni punto che lo mostra lo eredita già corretto invece di dover
-        // applicare lo stesso limite N volte in giro per il codice.
+        // le 5 parole (portato da 3 a 5: con 3 parole nomi comuni come "What Are The Odds"
+        // perdevano l'ultima parola) in nessuna schermata dell'app (titolo risultati,
+        // etichetta Now Playing/Immersive, Recenti in home, elenco Impostazioni...) -
+        // tagliato qui, alla fonte, così ogni punto che lo mostra lo eredita già corretto
+        // invece di dover applicare lo stesso limite N volte in giro per il codice. Oltre
+        // questo limite (o comunque quando il nome non entra nello spazio disponibile), è
+        // il testo scorrevole generico (vedi MARQUEE_TARGET_SELECTOR) a occuparsi del resto.
         function cleanSpotifyPlaylistName(name) {
             let cleaned = (name || '').trim();
             cleaned = cleaned.split(/·|\s+(?:[-|–•]\s*(?:playlist\s+)?by\s+|[-|–•]\s+|by\s+)/i)[0].trim();
@@ -6894,7 +6900,7 @@
                 .replace(/\bspotify\b/gi, '')
                 .replace(/\s{2,}/g, ' ')
                 .trim();
-            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
+            cleaned = cleaned.split(/\s+/).filter(Boolean).slice(0, 5).join(' ');
             return cleaned || 'Playlist';
         }
 

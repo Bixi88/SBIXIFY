@@ -2576,7 +2576,10 @@
         // un evento 'click' dopo un mousedown+mousemove+mouseup sullo stesso elemento:
         // questo flag serve a impedire che quel click "fantasma" apra la sheet.
         let miniPlayerWasDragged = false;
-
+        // Vero per un istante subito dopo che endMiniDrag ha già aperto la sheet da un tap
+        // "pulito" (vedi lì): se su questo browser/dispositivo il 'click' sintetico arriva
+        // comunque poco dopo, va ignorato per non aprire/richiudere una seconda volta.
+        let tapAlreadyOpenedSheet = false;
         // Legge la posizione VERA e attuale della sheet (in % di translateY), qualunque sia lo
         // stato in cui si trova in quel momento (chiusa, aperta, o a metà di un'altra animazione).
         // Serve per far sì che ogni nuovo gesto riparta sempre da dove la sheet si trova davvero,
@@ -3397,6 +3400,12 @@
 
             miniPlayer.addEventListener('click', (e) => {
                 if (e.target.closest('#miniPlayerControls') || e.target.closest('#miniProgressBarArea')) {
+                    return;
+                }
+                // Il tap è già stato gestito direttamente in endMiniDrag (vedi lì): se questo
+                // click sintetico arriva comunque, va solo ignorato una volta, non rieseguito.
+                if (tapAlreadyOpenedSheet) {
+                    tapAlreadyOpenedSheet = false;
                     return;
                 }
                 // Il mouse (a differenza del touch) genera comunque un evento 'click' dopo un
@@ -4478,6 +4487,18 @@
                 } else if (miniCurrentX < -80) {
                     hapticFeedback();
                     nextTrack();
+                } else if (!miniPlayerWasDragged && !miniLongPressFired) {
+                    // Vero tap, niente trascinamento né swipe orizzontale né pressione
+                    // prolungata: apriamo la sheet direttamente da qui invece di aspettare il
+                    // 'click' sintetico che il browser genera di solito dopo un touchend.
+                    // Su Brave/Chromium per Android, con touch-action:none sull'elemento (qui
+                    // serve per bloccare lo scroll durante lo swipe), quel click sintetico
+                    // spesso non scatta MAI - risultato: il tap sembrava non fare nulla e
+                    // solo un vero swipe (che passa dal ramo sheetWasMoved sopra) apriva la
+                    // sheet. tapAlreadyOpenedSheet evita una doppia apertura sui browser dove
+                    // il click, invece, arriva comunque (es. il mouse su desktop).
+                    tapAlreadyOpenedSheet = true;
+                    openNowPlayingSheet();
                 }
 
                 sheetWasMoved = false;
@@ -8007,6 +8028,17 @@
             document.getElementById('miniPlayerChannel').innerText = track.channel;
             checkAndApplyMiniMarquee(track.title);
 
+            // checkAndApplyMarquee() va richiamata SEMPRE ad ogni cambio brano, non solo se
+            // isBrowsingListPlaying: quando il titolo grande sta già scorrendo (marquee attivo),
+            // il markup contiene DUE copie duplicate del testo per il loop continuo, e il
+            // semplice titleEl.innerText = track.title poco sopra ne aggiorna solo la prima
+            // (getElementById prende il primo id="playerTrackTitle" che trova) - la seconda
+            // copia, quella che scorre in vista subito dopo, restava con il titolo del brano
+            // precedente. Ricostruendo qui tutto il markup del marquee (entrambe le copie)
+            // il problema sparisce anche per i brani avviati fuori da una playlist sfogliata
+            // (es. da un suggerimento di ricerca).
+            checkAndApplyMarquee();
+
             if (isBrowsingListPlaying) {
                 const newRow = document.getElementById(`track-row-${index}`);
                 if (newRow) {
@@ -8024,7 +8056,6 @@
                         scrollActiveTrackRowIntoView(newRow);
                     }
                 }
-                checkAndApplyMarquee();
             }
             toggleDownloadButtons(true);
 

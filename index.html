@@ -1024,7 +1024,7 @@
            segue nel flusso (griglia playlist, canzoni), niente altro da ritoccare. */
         .home-header + .quick-eyebrow { padding-top: 34px; }
         .quick-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 9px; padding:14px 9px 20px; justify-items:center; transform: translateZ(0); }
-        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; }
+        .qcard { display:flex; flex-direction:column; align-items:center; gap:9px; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; width:100%; min-width:0; }
         .qcard * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
         .qcard:active { transform:scale(0.96); }
         .qcard { position:relative; }
@@ -1062,7 +1062,7 @@
            restringono/allargano insieme per riempire esattamente la larghezza
            disponibile: sempre 3 intere, sempre centrate, su qualunque schermo. */
         .charts-row { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; padding:10px 24px 8px; touch-action:pan-y; }
-        .chart-card { width:100%; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
+        .chart-card { width:100%; min-width:0; display:flex; flex-direction:column; align-items:center; cursor:pointer; -webkit-user-select:none; user-select:none; }
         .chart-card:active .chart-card-thumb { transform:scale(0.96); }
         .chart-card .chart-card-thumb { width:100%; aspect-ratio:1/1; border-radius:50%; background-size:cover; background-position:center; background-color:var(--bg-input); box-shadow:0 10px 22px -8px rgba(0,0,0,.5); }
         .chart-card .chart-card-label { margin-top:9px; width:100%; text-align:center; font-size:12.5px; font-weight:700; line-height:1.25; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

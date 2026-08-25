@@ -970,6 +970,7 @@
            distinguerli a colpo d'occhio senza tornare al quadrato. */
         .suggest-row .suggest-thumb { width:44px; height:44px; border-radius:50%; flex-shrink:0; background-size:cover; background-position:center; background-color:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:13px; }
         .suggest-row.is-artist .suggest-thumb { width:52px; height:52px; }
+        .suggest-row.is-album .suggest-thumb { width:52px; height:52px; border-radius:8px; }
         .suggest-row .suggest-meta { flex:1; min-width:0; }
         .suggest-row .suggest-title { font-size:13.5px; font-weight:700; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .suggest-row .suggest-sub { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -3121,7 +3122,7 @@
             function handleSearchSubmit() {
                 const value = searchInput.value.trim();
                 if (!value) { hideSearchSuggestions(); return; }
-                if (isSpotifyPlaylistLink(value) || isSpotifyArtistLink(value)) {
+                if (isSpotifyPlaylistLink(value) || isSpotifyArtistLink(value) || isSpotifyAlbumLink(value)) {
                     hideSearchSuggestions();
                     importSpotifyPlaylist(value);
                     searchInput.value = '';
@@ -3166,19 +3167,21 @@
             window.hideSearchSuggestions = hideSearchSuggestions;
 
             async function fetchDeezerSuggestions(query) {
-                const [artistRes, trackRes] = await Promise.all([
+                const [artistRes, albumRes, trackRes] = await Promise.all([
                     jsonpRequest(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=4`, 6000).catch(() => null),
+                    jsonpRequest(`https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=4`, 6000).catch(() => null),
                     jsonpRequest(`https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=6`, 6000).catch(() => null)
                 ]);
                 return {
                     artists: (artistRes && Array.isArray(artistRes.data)) ? artistRes.data : [],
+                    albums: (albumRes && Array.isArray(albumRes.data)) ? albumRes.data : [],
                     tracks: (trackRes && Array.isArray(trackRes.data)) ? trackRes.data : []
                 };
             }
 
-            function renderSearchSuggestions(artists, tracks) {
+            function renderSearchSuggestions(artists, tracks, albums = []) {
                 if (!searchSuggestionsEl) return;
-                if (!artists.length && !tracks.length) { hideSearchSuggestions(); return; }
+                if (!artists.length && !tracks.length && !albums.length) { hideSearchSuggestions(); return; }
 
                 const rowsHtml = [];
                 artists.forEach((a, i) => {
@@ -3189,6 +3192,23 @@
                             <div class="suggest-meta">
                                 <div class="suggest-title">${escapeHtml(cleanSpotifyArtistName(a.name))}</div>
                                 <div class="suggest-sub">Artista</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right suggest-icon"></i>
+                        </div>
+                    `);
+                });
+                // Album: stesso trattamento delle card artista (cerchio + "vai a", non un
+                // brano da riprodurre subito), etichetta "Album" al posto di "Artista" e
+                // sottotitolo con il nome di chi l'ha pubblicato.
+                albums.forEach((al, i) => {
+                    const cover = al.cover_medium || al.cover_small || al.cover_big || '';
+                    const artistName = (al.artist && al.artist.name) || '';
+                    rowsHtml.push(`
+                        <div class="suggest-row is-album" data-kind="album" data-idx="${i}">
+                            <div class="suggest-thumb" style="${cover ? `background-image:url('${cover.replace(/'/g, "\\'")}')` : ''}">${cover ? '' : '<i class="fa-solid fa-compact-disc"></i>'}</div>
+                            <div class="suggest-meta">
+                                <div class="suggest-title">${escapeHtml(al.title || '')}</div>
+                                <div class="suggest-sub">Album${artistName ? ' · ' + escapeHtml(artistName) : ''}</div>
                             </div>
                             <i class="fa-solid fa-chevron-right suggest-icon"></i>
                         </div>
@@ -3221,6 +3241,20 @@
                         searchInput.blur();
                         searchInput.value = cleanSpotifyArtistName(artist.name);
                         searchArtistPlaylist(artist);
+                    });
+                });
+                // Tap su un album suggerito: stesso comportamento della card artista, ma
+                // con la tracklist dell'album (vedi searchAlbumPlaylist) - salvato SEMPRE
+                // nei Recenti, a differenza di una canzone singola cercata per nome.
+                searchSuggestionsEl.querySelectorAll('.suggest-row.is-album').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const album = albums[parseInt(row.dataset.idx, 10)];
+                        if (!album) return;
+                        hapticFeedback();
+                        hideSearchSuggestions();
+                        searchInput.blur();
+                        searchInput.value = '';
+                        searchAlbumPlaylist(album);
                     });
                 });
                 // Tap su un brano suggerito: riproduzione IMMEDIATA del match più preciso
@@ -3332,7 +3366,7 @@
                 // più sovrascrivere il dropdown ora che l'utente sta riscrivendo.
                 ++inlineSearchToken;
 
-                if (!query || query.length < 2 || isSpotifyPlaylistLink(query) || isSpotifyArtistLink(query)) {
+                if (!query || query.length < 2 || isSpotifyPlaylistLink(query) || isSpotifyArtistLink(query) || isSpotifyAlbumLink(query)) {
                     hideSearchSuggestions();
                     return;
                 }
@@ -3353,7 +3387,7 @@
                     // Se nel frattempo l'utente ha digitato altro (o la ricerca è già stata
                     // inviata) questo risultato non è più quello giusto: si scarta.
                     if (myToken !== suggestRequestToken || searchInput.value.trim() !== query) return;
-                    renderSearchSuggestions(result.artists, result.tracks);
+                    renderSearchSuggestions(result.artists, result.tracks, result.albums);
                 }, 280);
             });
 
@@ -3361,7 +3395,7 @@
                 const query = searchInput.value.trim();
                 if (query.length >= 2 && suggestCache.has(query.toLowerCase())) {
                     const cached = suggestCache.get(query.toLowerCase());
-                    renderSearchSuggestions(cached.artists, cached.tracks);
+                    renderSearchSuggestions(cached.artists, cached.tracks, cached.albums);
                 }
             });
 
@@ -5168,13 +5202,16 @@
         // semplicemente non risolti finché la playlist non viene aperta davvero (stessa
         // logica, invariata, dell'import manuale).
         async function silentRefreshPlaylist(url) {
-            const isArtist = isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
-            const playlistId = isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url);
+            const isAlbum = isSpotifyAlbumLink(url) && !isSpotifyPlaylistLink(url) && !isSpotifyArtistLink(url);
+            const isArtist = !isAlbum && isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
+            const playlistId = isAlbum ? extractSpotifyAlbumId(url) : (isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url));
             if (!playlistId) return;
             try {
-                const scraped = isArtist
-                    ? await fetchSpotifyArtistTopTracks(playlistId, true)
-                    : await fetchSpotifyEmbedPlaylist(playlistId, true);
+                const scraped = isAlbum
+                    ? await fetchSpotifyEmbedAlbum(playlistId, true)
+                    : isArtist
+                        ? await fetchSpotifyArtistTopTracks(playlistId, true)
+                        : await fetchSpotifyEmbedPlaylist(playlistId, true);
                 const tracks = scraped.tracks.map(t => {
                     const cached = getCachedTrack(t.title, t.artist);
                     const thumbnail = t.thumbnail || cached?.thumbnail || null;
@@ -6555,6 +6592,17 @@
                 || /^spotify:artist:[a-zA-Z0-9]{15,25}$/i.test(text);
         }
 
+        // --- LINK ALBUM SPOTIFY (import di tutti i brani dell'album) ---
+        function extractSpotifyAlbumId(url) {
+            const match = url.match(/album[\/:]([a-zA-Z0-9]{15,25})/);
+            return match ? match[1] : null;
+        }
+
+        function isSpotifyAlbumLink(text) {
+            return /spotify\.com\/(?:[a-z-]+\/)?album\/[a-zA-Z0-9]{15,25}/i.test(text)
+                || /^spotify:album:[a-zA-Z0-9]{15,25}$/i.test(text);
+        }
+
         // Esiste un vero embed Spotify anche per gli artisti (open.spotify.com/embed/
         // artist/<id>), stessa tecnologia server-renderizzata già usata per le playlist
         // (a differenza della pagina "normale" open.spotify.com/artist/<id>, che è una
@@ -6627,6 +6675,55 @@
                 if (!title || tracks.some(t => t.title === title)) return;
                 tracks.push({ title, artist: artist || name || 'Artista', thumbnail: null });
             });
+
+            return { name, cover, tracks };
+        }
+
+        // Nome, copertina e tracklist dalla pagina embed di un ALBUM Spotify
+        // (open.spotify.com/embed/album/<id>), stessa tecnologia server-renderizzata già
+        // usata per playlist e artisti: righe con titolo brano come heading principale e,
+        // quando presente, l'artista del singolo brano come secondo heading (utile per gli
+        // album con più artisti, es. compilation/feat.). Se un brano non ha un secondo
+        // heading (caso comune: album di un solo artista, dove la riga mostra solo il
+        // titolo) si usa l'artista dell'album letto da og:description ("Album · Artista ·
+        // Anno"), con l'og:title come ultimo ripiego.
+        async function fetchSpotifyEmbedAlbum(albumId, forceRefresh = false) {
+            const html = await fetchViaCorsProxy(`https://open.spotify.com/embed/album/${albumId}`, 10000, forceRefresh);
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+
+            let name = null, cover = null;
+            const coverImg = Array.from(doc.querySelectorAll('img')).find(img => /\bcover$/i.test((img.alt || '').trim()));
+            if (coverImg) {
+                name = coverImg.alt.trim().replace(/\s*cover$/i, '').trim();
+                cover = coverImg.src || coverImg.getAttribute('src') || null;
+            }
+            if (!name) {
+                name = doc.querySelector('meta[property="og:title"]')?.content
+                    || doc.querySelector('title')?.textContent
+                    || null;
+            }
+            if (!cover) {
+                cover = doc.querySelector('meta[property="og:image"]')?.content || null;
+            }
+            const ogDesc = doc.querySelector('meta[property="og:description"]')?.content || '';
+            const albumArtist = ogDesc.split('·')[1]?.trim() || null;
+            name = name || 'Album';
+
+            const rows = doc.querySelectorAll('ol li, [role="row"]');
+            const tracks = [];
+            rows.forEach(row => {
+                const headings = row.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
+                if (headings.length === 0) return;
+                let title = headings[0].textContent.trim();
+                title = title.replace(/^E(?=[A-ZÀ-Ý])/, '');
+                let artist = headings.length > 1 ? headings[1].textContent.trim().replace(/^E(?=[A-ZÀ-Ý])/, '') : (albumArtist || name);
+                if (!title || tracks.some(t => t.title === title)) return;
+                tracks.push({ title, artist: artist || albumArtist || 'Artista', thumbnail: null });
+            });
+
+            if (tracks.length === 0) {
+                throw new Error('Nessun brano trovato: album privato/non disponibile, oppure Spotify ha cambiato la struttura della pagina embed.');
+            }
 
             return { name, cover, tracks };
         }
@@ -6835,8 +6932,9 @@
         // risoluzione in background) è condivisa e resta identica per entrambi i casi.
         async function importSpotifyPlaylist(url, forceRefresh = false) {
             const resultsStatusText = document.getElementById('resultsStatusText');
-            const isArtist = isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
-            const playlistId = isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url);
+            const isAlbum = isSpotifyAlbumLink(url) && !isSpotifyPlaylistLink(url) && !isSpotifyArtistLink(url);
+            const isArtist = !isAlbum && isSpotifyArtistLink(url) && !isSpotifyPlaylistLink(url);
+            const playlistId = isAlbum ? extractSpotifyAlbumId(url) : (isArtist ? extractSpotifyArtistId(url) : extractSpotifyPlaylistId(url));
 
             if (!playlistId) {
                 showResultsView('Risultati');
@@ -6892,9 +6990,11 @@
             if (resultsStatusText) resultsStatusText.classList.add('hidden');
 
             try {
-                const scraped = isArtist
-                    ? await fetchSpotifyArtistTopTracks(playlistId, forceRefresh)
-                    : await fetchSpotifyEmbedPlaylist(playlistId, forceRefresh);
+                const scraped = isAlbum
+                    ? await fetchSpotifyEmbedAlbum(playlistId, forceRefresh)
+                    : isArtist
+                        ? await fetchSpotifyArtistTopTracks(playlistId, forceRefresh)
+                        : await fetchSpotifyEmbedPlaylist(playlistId, forceRefresh);
                 const rawTracks = scraped.tracks;
                 const meta = { name: scraped.name, cover: scraped.cover };
 
@@ -6997,14 +7097,17 @@
 
         // Punto d'ingresso unico per riaprire una playlist salvata nei Recenti/Impostazioni:
         // quelle "vere" restano un link Spotify (import via importSpotifyPlaylist), quelle
-        // nate da una ricerca per nome artista hanno invece un url sintetico (prefisso
-        // ARTIST_SEARCH_URL_PREFIX, mai un link Spotify reale) e vanno riaperte rifacendo la
-        // stessa ricerca Deezer. Ogni punto del codice che riapriva una voce dei Recenti
+        // nate da una ricerca per nome artista o da un album selezionato dai suggerimenti
+        // hanno invece un url sintetico (prefisso ARTIST_SEARCH_URL_PREFIX o
+        // ALBUM_SEARCH_URL_PREFIX, mai un link Spotify reale) e vanno riaperte rifacendo la
+        // stessa fetch Deezer. Ogni punto del codice che riapriva una voce dei Recenti
         // chiamando importSpotifyPlaylist(url) passa da qui, così non serve controllare il
         // prefisso in più posti diversi.
         function openPlaylistByUrl(url, forceRefresh = false) {
             if (url && url.startsWith(ARTIST_SEARCH_URL_PREFIX)) {
                 reopenArtistSearchPlaylist(url, forceRefresh);
+            } else if (url && url.startsWith(ALBUM_SEARCH_URL_PREFIX)) {
+                reopenAlbumSearchPlaylist(url, forceRefresh);
             } else {
                 importSpotifyPlaylist(url, forceRefresh);
             }
@@ -7182,6 +7285,134 @@
                 resultsStatusText.classList.remove('hidden');
                 resultsStatusText.innerText = 'Artista non trovato.';
             }
+        }
+
+        // --- ALBUM CERCATO PER NOME (tap su un suggerimento del dropdown) ---
+        // A differenza di canzoni/artisti, un album non ha una "pagina Spotify" da
+        // scrappare quando arriva da qui: usiamo direttamente l'id numerico Deezer
+        // dell'album selezionato (nessuna ricerca fuzzy per nome, quindi nessun rischio
+        // di agganciare l'album sbagliato). Richiesta esplicita: cliccare un album lo
+        // salva SEMPRE nei Recenti, a differenza di una canzone cercata per nome.
+        const ALBUM_SEARCH_URL_PREFIX = 'album-search:';
+
+        // Metadati completi (nome, copertina, artista principale) + tracklist di un ALBUM
+        // Deezer in un'unica chiamata pubblica, senza chiave. L'artista di ogni singolo
+        // brano viene letto dal brano stesso (utile per compilation/feat.), con l'artista
+        // principale dell'album come ripiego.
+        async function fetchDeezerAlbum(albumId) {
+            const data = await jsonpRequest(`https://api.deezer.com/album/${albumId}`, 8000);
+            if (!data || data.error) throw new Error('Album non trovato su Deezer.');
+            const tracks = ((data.tracks && Array.isArray(data.tracks.data)) ? data.tracks.data : [])
+                .filter(t => t && t.title)
+                .map(t => ({
+                    title: t.title,
+                    artist: (t.artist && t.artist.name) || (data.artist && data.artist.name) || 'Artista'
+                }));
+            return {
+                name: data.title || 'Album',
+                cover: data.cover_xl || data.cover_big || data.cover_medium || null,
+                tracks
+            };
+        }
+
+        async function searchAlbumPlaylist(album, forceRefresh = false) {
+            const resultsStatusText = document.getElementById('resultsStatusText');
+            const url = ALBUM_SEARCH_URL_PREFIX + album.id;
+
+            const cached = forceRefresh ? null : getCachedPlaylistTracks(url);
+            if (cached) {
+                currentListSource = 'spotify';
+                nextSearchPageToken = '';
+                appState.tracks = cached.tracks.map(t => ({ ...t }));
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cached.name;
+                toggleDownloadButtons(false);
+                showResultsView(cached.name);
+                renderTracklist(0);
+                updateRefreshPlaylistBtn(url);
+                addRecentItem({ name: cached.name, type: 'playlist', url, artwork: cached.artwork });
+                addRecentPlaylist({ name: cached.name, url, artwork: cached.artwork });
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+                return;
+            }
+
+            currentListSource = 'spotify';
+            nextSearchPageToken = '';
+            showResultsView('Ricerca in corso');
+            appState.tracks = []; appState.currentIndex = -1;
+            toggleDownloadButtons(false);
+            document.getElementById('trackList').innerHTML = '';
+            if (resultsStatusText) resultsStatusText.classList.add('hidden');
+
+            try {
+                const full = await fetchDeezerAlbum(album.id);
+                if (full.tracks.length === 0) throw new Error('Nessun brano trovato per questo album.');
+                const cleanName = full.name;
+
+                appState.tracks = full.tracks.map(t => {
+                    const cachedTrack = getCachedTrack(t.title, t.artist);
+                    const thumbnail = cachedTrack?.thumbnail || null;
+                    return {
+                        id: cachedTrack?.id || null,
+                        title: t.title,
+                        channel: t.artist,
+                        thumbnail,
+                        artworkFetched: !!(thumbnail || cachedTrack?.id),
+                        resolved: !!cachedTrack?.id,
+                        spotifyImport: true
+                    };
+                });
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cleanName;
+
+                if (resultsStatusText) resultsStatusText.classList.add('hidden');
+                renderTracklist(0);
+                showResultsView(cleanName);
+
+                // Copertina: quella già arrivata col suggerimento Deezer (istantanea, niente
+                // attesa) se presente, altrimenti quella appena letta dalla fetch completa
+                // (caso di riapertura dai Recenti, dove partiamo dal solo id).
+                const cover = album.cover_xl || album.cover_big || album.cover_medium || full.cover;
+                addRecentItem({ name: cleanName, type: 'playlist', url, artwork: cover });
+                addRecentPlaylist({ name: cleanName, url, artwork: cover });
+                setCachedPlaylistTracks(url, { name: cleanName, artwork: cover, tracks: appState.tracks });
+                updateRefreshPlaylistBtn(url);
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+            } catch (err) {
+                console.warn('Ricerca album fallita:', err);
+                if (resultsStatusText) {
+                    resultsStatusText.classList.remove('hidden');
+                    resultsStatusText.innerText = 'Nessun brano trovato per questo album.';
+                }
+            }
+        }
+
+        // Riapertura di un album dai Recenti/Impostazioni quando la cache è scaduta (o
+        // refresh forzato): l'url sintetico contiene già l'id Deezer, quindi basta
+        // rifare la fetch diretta, senza bisogno di ricercare per nome (a differenza
+        // dell'artista, che deve invece essere ritrovato per nome su Deezer).
+        async function reopenAlbumSearchPlaylist(url, forceRefresh = false) {
+            const cached = forceRefresh ? null : getCachedPlaylistTracks(url);
+            if (cached) {
+                currentListSource = 'spotify';
+                nextSearchPageToken = '';
+                appState.tracks = cached.tracks.map(t => ({ ...t }));
+                appState.currentIndex = -1;
+                currentLoadedKey = 'playlist:' + url;
+                currentLoadedTitle = cached.name;
+                toggleDownloadButtons(false);
+                showResultsView(cached.name);
+                renderTracklist(0);
+                updateRefreshPlaylistBtn(url);
+                addRecentItem({ name: cached.name, type: 'playlist', url, artwork: cached.artwork });
+                addRecentPlaylist({ name: cached.name, url, artwork: cached.artwork });
+                startBackgroundPlaylistResolve(appState.tracks, currentLoadedKey);
+                return;
+            }
+            const albumId = url.slice(ALBUM_SEARCH_URL_PREFIX.length);
+            await searchAlbumPlaylist({ id: albumId }, forceRefresh);
         }
 
         // --- ARTWORK (sistema identico alla vecchia versione del progetto) ---

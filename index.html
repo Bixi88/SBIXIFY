@@ -2129,14 +2129,20 @@
 
         // --- PROXY CORS ---
         // La pagina embed di Spotify (usata sotto per leggere le playlist) non concede
-        // CORS a chi la richiama da un altro dominio: serve quindi un proxy pubblico
-        // che la scarichi lui e ce la passi. Li chiamiamo ENTRAMBI in parallelo fin da
-        // subito (non più uno alla volta in sequenza): i proxy gratuiti sono noti per
-        // un'affidabilità limitata (~50%) e, soprattutto, per essere lenti a tratti - se
-        // il primo semplicemente ci mette tanto a rispondere (non fallisce, è solo lento),
-        // provarli in sequenza significava restare fermi ad aspettarlo per intero prima
-        // di passare al secondo. Così invece vince chi risponde prima, e un timeout per
-        // parte evita che uno bloccato trascini l'attesa per un minuto intero.
+        // CORS a chi la richiama da un altro dominio: serve quindi qualcosa che la
+        // scarichi lato server e ce la passi. La fonte primaria è ora il Worker
+        // Cloudflare già usato per la ricerca YouTube (WORKER_URL, vedi sotto), tramite
+        // la route /spotify: girando lato server, non è mai soggetto a CORS ed è molto
+        // più affidabile dei proxy pubblici. Questi ultimi (allorigins/corsproxy/
+        // codetabs) restano come fallback nella stessa corsa: sono noti per
+        // un'affidabilità limitata (~50%) e possono anche sparire/cambiare regole da un
+        // giorno all'altro (è quello che ha causato "Nessun proxy CORS disponibile" con
+        // tutti e tre falliti insieme). Li chiamiamo TUTTI in parallelo fin da
+        // subito (non più uno alla volta in sequenza): se il primo semplicemente ci mette
+        // tanto a rispondere (non fallisce, è solo lento), provarli in sequenza significava
+        // restare fermi ad aspettarlo per intero prima di passare al secondo. Così invece
+        // vince chi risponde prima, e un timeout per parte evita che uno bloccato trascini
+        // l'attesa per un minuto intero.
         async function fetchViaCorsProxy(targetUrl, timeoutMs = 10000, noCache = false) {
             // noCache=true (usato dal pulsante "aggiorna playlist", che deve avere
             // priorità su OGNI cache): i proxy CORS pubblici che usiamo (specialmente
@@ -2145,11 +2151,13 @@
             // di prima anche se su Spotify è già cambiato qualcosa. Aggiungendo un
             // parametro univoco all'URL target, il proxy la vede come una richiesta mai
             // vista prima e non ha nulla da servire dalla propria cache. cache:'no-store'
-            // fa lo stesso lavoro sulla cache HTTP del browser.
+            // fa lo stesso lavoro sulla cache HTTP del browser. Il nostro Worker non
+            // caching nulla di suo, ma il parametro non gli dà comunque fastidio.
             const effectiveTargetUrl = noCache
                 ? targetUrl + (targetUrl.includes('?') ? '&' : '?') + '_ts=' + Date.now()
                 : targetUrl;
             const buildProxyUrls = [
+                u => `${WORKER_URL}/spotify?url=${encodeURIComponent(u)}`,
                 u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
                 u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
                 u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`

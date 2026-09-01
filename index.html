@@ -2234,6 +2234,11 @@
         // il video nuovo è davvero quello "attivo" e i suoi dati sono freschi.
         let playLoadToken = 0;
         let playLoadConfirmedToken = -1;
+        // Token del loadVideoById() ancora "in volo" (chiamato, ma non ancora confermato
+        // da un PLAYING reale): usato solo per misurare col DevTools quanto tempo passa
+        // tra la chiamata e l'audio che parte davvero, cosa che non possiamo controllare
+        // da qui, essendo YouTube stesso a decidere ads/verifica diritti sul contenuto.
+        let pendingLoadTimerToken = null;
         
         const nowPlayingSheet = document.getElementById('nowPlayingSheet');
         const miniPlayer = document.getElementById('miniPlayer');
@@ -2838,6 +2843,17 @@
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
+                // Chiude la misurazione aperta da loadTrack: nella console del browser (o via
+                // remote debugging da telefono) vedrai una riga tipo
+                // "sbixify-avvio-audio-42: 6231.xx ms" col tempo REALE che YouTube ci ha messo
+                // a passare da "richiesto" a "sta suonando". Se resta sui 5-6 secondi anche
+                // dopo aver spostato la chiamata più in alto nella funzione, vuol dire che il
+                // ritardo non dipende da noi ma da YouTube (verifica diritti/pubblicità sul
+                // contenuto musicale) - lo sappiamo con certezza invece di supporre.
+                if (pendingLoadTimerToken !== null && pendingLoadTimerToken === playLoadConfirmedToken) {
+                    try { console.timeEnd(`sbixify-avvio-audio-${pendingLoadTimerToken}`); } catch (e) {}
+                    pendingLoadTimerToken = null;
+                }
                 playerErrorStreak = 0; // un brano è ripartito con successo: azzera il contatore errori
                 appState.isPlaying = true;
                 setPlayIconState(true);
@@ -8204,6 +8220,26 @@
             // riproducibile, il tasto play non deve poter riprendere quello vecchio.
             nowPlayingUnavailable = false;
 
+            // AVVIO SUBITO IL CARICAMENTO DEL VIDEO, se l'id YouTube è già noto (praticamente
+            // sempre: brani da ricerca diretta, brani recenti, brani Spotify già risolti in
+            // precedenza). Prima questa chiamata arrivava in fondo alla funzione, DOPO circa
+            // 60 righe di aggiornamenti UI (titolo, copertina, testo sincronizzato, evidenziazione
+            // riga...): lavoro di per sé innocuo e velocissimo (pochi millisecondi), ma che
+            // comunque ritardava di quel poco l'istante in cui YouTube riceve la richiesta e
+            // comincia la sua parte (che è quella davvero lenta: verifica diritti/Content-ID,
+            // eventuale pubblicità, negoziazione dello stream). Chiamandolo subito, quel lavoro
+            // YouTube-side parte in parallelo con gli aggiornamenti UI invece che dopo.
+            // Se l'id NON è ancora noto (brano Spotify mai ascoltato), il caricamento resta
+            // rimandato a dopo la sua risoluzione, come prima: qui non possiamo farci nulla prima.
+            let videoLoadStartedHere = false;
+            if (track.id && player?.loadVideoById) {
+                playLoadToken++;
+                pendingLoadTimerToken = playLoadToken;
+                try { console.time(`sbixify-avvio-audio-${pendingLoadTimerToken}`); } catch (e) {}
+                player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
+                videoLoadStartedHere = true;
+            }
+
             // CARICAMENTO SUCESSIVO PREVENTIVO ED ESCLUSIVO (solo per liste da ricerca YouTube,
             // le playlist importate da Spotify non hanno paginazione YouTube):
             // Scatta solo all'inizio dell'ultimo brano della lista (brani 25, 50, etc. - index === sourceTracks.length - 1),
@@ -8379,12 +8415,21 @@
                 }
             }
 
-            // suggestedQuality 'small': il player è un riquadro 1x1 invisibile, quindi la
+            // suggestedQuality 'tiny': il player è un riquadro 1x1 invisibile, quindi la
             // risoluzione video non ha alcun impatto visivo per l'utente. Chiedendo fin da
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
-            // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
-            // la canzone", più della semplice velocità di rete.
-            if (player?.loadVideoById) { playLoadToken++; player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' }); }
+            // poter iniziare la riproduzione.
+            // (In realtà YouTube ignora da tempo questo suggerimento nell'IFrame Player più
+            // recente per molti contenuti, ma lo lasciamo: è innocuo e non ha costo.)
+            // Se il video era già partito qui sopra (id noto fin dall'inizio) non lo rifacciamo
+            // partire una seconda volta: ricaricherebbe lo stream da capo, buttando via il
+            // buffering già in corso invece di aiutarlo.
+            if (!videoLoadStartedHere && player?.loadVideoById) {
+                playLoadToken++;
+                pendingLoadTimerToken = playLoadToken;
+                try { console.time(`sbixify-avvio-audio-${pendingLoadTimerToken}`); } catch (e) {}
+                player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
+            }
             updateMediaSessionMetadata(track);
 
             // Ricordiamo il brano e la playlist/ricerca in ascolto: alla prossima apertura

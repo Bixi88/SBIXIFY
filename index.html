@@ -1807,11 +1807,6 @@
         </section>
 
         <div id="ytPlayerContainer" class="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"></div>
-        <!-- Secondo player, sempre nascosto e muto: mentre il brano attuale suona, qui viene
-             "scaldato" in anticipo (cueVideoById, senza avviare l'audio) il prossimo brano della
-             coda. Quando si passa davvero a quel brano, i due player si scambiano di ruolo invece
-             di ripartire da zero: vedi trySwapInPreloadedPlayer/scheduleNextTrackPreload. -->
-        <div id="ytPreloadPlayerContainer" class="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"></div>
         <!-- Audio "keep-alive": un loop quasi-impercettibile che gira nella pagina principale (non
              nell'iframe di YouTube) mentre si sta riproducendo un brano. Serve a far riconoscere a
              Chrome/Brave che QUESTA pagina sta producendo audio, così viene esentata dal "freeze" dei
@@ -2237,44 +2232,8 @@
         // allineato solo dentro onPlayerStateChange, che scatta SOLO per eventi reali del
         // player (BUFFERING/CUED/PLAYING/...) e quindi è la prima conferma affidabile che
         // il video nuovo è davvero quello "attivo" e i suoi dati sono freschi.
-        // --- PANNELLO DI DEBUG TEMPORANEO, VISIBILE SULLO SCHERMO ---
-        // Serve solo per diagnosticare il preload del secondo player senza dover collegare
-        // il telefono a un PC per la console. Un tasto 🐞 in alto a sinistra apre/chiude un
-        // riquadro con le ultime righe di log. DA RIMUOVERE una volta risolto il problema.
-        const debugLogLines = [];
-        function debugLog(...args) {
-            const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-            console.log(msg);
-            debugLogLines.push(`${new Date().toLocaleTimeString('it-IT')}  ${msg}`);
-            if (debugLogLines.length > 40) debugLogLines.shift();
-            const box = document.getElementById('debugLogBox');
-            if (box) box.textContent = debugLogLines.join('\n');
-        }
-        function initDebugPanel() {
-            if (document.getElementById('debugLogBtn')) return;
-            const btn = document.createElement('div');
-            btn.id = 'debugLogBtn';
-            btn.textContent = '🐞';
-            btn.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;background:#000;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0.55;';
-            const box = document.createElement('pre');
-            box.id = 'debugLogBox';
-            box.style.cssText = 'position:fixed;top:48px;left:8px;right:8px;max-height:45vh;overflow-y:auto;background:rgba(0,0,0,0.9);color:#7CFC7C;font-size:10px;line-height:1.4;padding:8px;border-radius:8px;z-index:999999;display:none;white-space:pre-wrap;';
-            btn.addEventListener('click', () => { box.style.display = box.style.display === 'none' ? 'block' : 'none'; });
-            document.body.appendChild(btn);
-            document.body.appendChild(box);
-        }
-        if (document.body) initDebugPanel(); else window.addEventListener('DOMContentLoaded', initDebugPanel);
-
         let playLoadToken = 0;
         let playLoadConfirmedToken = -1;
-        // Token del loadVideoById() ancora "in volo" (chiamato, ma non ancora confermato
-        // da un PLAYING reale): usato per misurare quanto tempo passa tra la chiamata e
-        // l'audio che parte davvero, cosa che non possiamo controllare da qui, essendo
-        // YouTube stesso a decidere ads/verifica diritti sul contenuto. pendingLoadStartedAt
-        // è il timestamp di quando è partita la richiesta, per calcolare la differenza a mano
-        // (niente DevTools disponibili da telefono, quindi niente console.time/timeEnd).
-        let pendingLoadTimerToken = null;
-        let pendingLoadStartedAt = null;
         
         const nowPlayingSheet = document.getElementById('nowPlayingSheet');
         const miniPlayer = document.getElementById('miniPlayer');
@@ -2727,49 +2686,11 @@
         document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
 
         let player;
-        // --- SECONDO PLAYER NASCOSTO, PER IL PRELOAD DEL PROSSIMO BRANO ---
-        // preloadPlayer: istanza separata, sempre muta, usata solo per "scaldare" in anticipo
-        // (cueVideoById) il brano che verrà dopo quello attuale nella coda. cueVideoById fa
-        // partire lato YouTube la parte lenta (verifica diritti/Content-ID, eventuale
-        // pubblicità) SENZA produrre audio, mentre l'utente sta ancora ascoltando il brano
-        // precedente: quando si passa davvero a quel brano, quel lavoro è già fatto.
-        // Ha i suoi eventi separati (onPreloadPlayerReady/onError) apposta per NON toccare
-        // onPlayerStateChange/onPlayerReady del player principale, che hanno effetti collaterali
-        // (avvio del progress loop, media session, keep-alive...) che avrebbe senso far scattare
-        // solo per il player davvero "attivo" in un dato momento.
-        let preloadPlayer = null;
-        let preloadPlayerReady = false;
-        let preloadedVideoId = null; // id attualmente "scaldato" nel preloadPlayer, o null
-        let preloadNextTrackTimer = null;
-
         window.onYouTubeIframeAPIReady = function() {
             player = new YT.Player('ytPlayerContainer', {
                 height: '100%', width: '100%', videoId: '',
                 playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1, 'fs': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
                 events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange, 'onError': onPlayerError }
-            });
-            preloadPlayer = new YT.Player('ytPreloadPlayerContainer', {
-                height: '100%', width: '100%', videoId: '',
-                playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1, 'fs': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3, 'mute': 1 },
-                events: {
-                    'onReady': function () {
-                        preloadPlayerReady = true;
-                        try { preloadPlayer.mute(); preloadPlayer.setVolume(0); } catch (e) {}
-                    },
-                    // Condiviso col player principale (vedi il controllo "event.target !== player"
-                    // in cima a onPlayerStateChange): finché questa istanza fa solo da preload,
-                    // quel controllo scarta i suoi eventi. Dal momento in cui viene promossa a
-                    // player attivo (trySwapInPreloadedPlayer), gli stessi eventi iniziano a
-                    // contare - senza questo, dopo lo scambio il minutaggio in-app resterebbe
-                    // fermo a 0:00 nonostante l'audio suoni davvero (bug osservato: notifica di
-                    // sistema con il tempo giusto, app ferma a 0:00).
-                    'onStateChange': onPlayerStateChange,
-                    // Se il preload del "prossimo brano" fallisce (video rimosso, rete lenta...),
-                    // non facciamo nulla qui: al momento vero del passaggio, trySwapInPreloadedPlayer
-                    // non troverà l'id atteso e si tornerà semplicemente al percorso normale
-                    // (loadVideoById "a freddo" sul player principale, come oggi).
-                    'onError': function () { preloadedVideoId = null; }
-                }
             });
         }
 
@@ -2902,21 +2823,6 @@
         }
 
         function onPlayerStateChange(event) {
-            // Questo handler è condiviso da entrambi i player (principale e di preload): un
-            // evento del player NON attivo in questo momento (preload silenzioso in corso, o
-            // istanza appena "retrocessa" a preload dopo uno scambio) non riguarda quello che
-            // l'utente sta davvero ascoltando, quindi va ignorato qui. Se non ci fosse questo
-            // controllo, un evento del player nascosto potrebbe far scattare per errore
-            // aggiornamenti (icona play, media session, minutaggio) su un brano che non è
-            // quello in riproduzione.
-            if (event.target !== player) {
-                // DEBUG TEMPORANEO: mostra a che stato arriva il player nascosto durante il
-                // preload (utile per capire se cueVideoById completa in tempo prima dello swap).
-                // Stati IFrame API: -1 UNSTARTED, 0 ENDED, 1 PLAYING, 2 PAUSED, 3 BUFFERING, 5 CUED.
-                debugLog('[preload] evento sul player nascosto, stato:', event.data);
-                return;
-            }
-
             // Prima conferma affidabile che il video "attivo" per l'IFrame è davvero
             // quello dell'ultimo loadVideoById/cueVideoById: da qui in poi getCurrentTime()
             // e getDuration() riflettono il video nuovo, non più quello uscente (vedi
@@ -2932,17 +2838,6 @@
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
             if (event.data == YT.PlayerState.PLAYING) {
-                // Chiude la misurazione aperta da loadTrack e la mostra nel pannello 🐞
-                // (niente DevTools da telefono): quanto tempo REALE è passato da "richiesto"
-                // a "sta suonando". Se resta sui 5-6 secondi anche col preload attivo, vuol
-                // dire che il ritardo non dipende da noi ma da YouTube (verifica diritti/
-                // pubblicità sul contenuto musicale) - lo sappiamo con certezza invece di supporre.
-                if (pendingLoadTimerToken !== null && pendingLoadTimerToken === playLoadConfirmedToken) {
-                    const elapsed = pendingLoadStartedAt !== null ? (performance.now() - pendingLoadStartedAt) : null;
-                    debugLog('[avvio] audio partito dopo', elapsed !== null ? Math.round(elapsed) + ' ms' : '? ms (token ' + pendingLoadTimerToken + ')');
-                    pendingLoadTimerToken = null;
-                    pendingLoadStartedAt = null;
-                }
                 playerErrorStreak = 0; // un brano è ripartito con successo: azzera il contatore errori
                 appState.isPlaying = true;
                 setPlayIconState(true);
@@ -2964,11 +2859,6 @@
                 // per sé, buon momento per far partire in sordina l'aggiornamento delle
                 // playlist scadute senza competere con la risoluzione del brano appena avviato.
                 schedulePlaylistAutoRefresh();
-                // Stesso ragionamento per il preload del prossimo brano nel player nascosto:
-                // aspettiamo un attimo che questo brano si sia stabilizzato prima di far
-                // partire in background la richiesta per quello dopo.
-                clearTimeout(preloadNextTrackTimer);
-                preloadNextTrackTimer = setTimeout(scheduleNextTrackPreload, 2000);
             } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
@@ -8314,11 +8204,6 @@
             // riproducibile, il tasto play non deve poter riprendere quello vecchio.
             nowPlayingUnavailable = false;
 
-            // Se questo è esattamente il brano che avevamo già scaldato in background nel
-            // player nascosto (caso tipico: avanti/fine coda), scambiamo i due player invece
-            // di ripartire da zero: vedi trySwapInPreloadedPlayer più sotto.
-            if (track.id) trySwapInPreloadedPlayer(track.id);
-
             // AVVIO SUBITO IL CARICAMENTO DEL VIDEO, se l'id YouTube è già noto (praticamente
             // sempre: brani da ricerca diretta, brani recenti, brani Spotify già risolti in
             // precedenza). Prima questa chiamata arrivava in fondo alla funzione, DOPO circa
@@ -8333,8 +8218,6 @@
             let videoLoadStartedHere = false;
             if (track.id && player?.loadVideoById) {
                 playLoadToken++;
-                pendingLoadTimerToken = playLoadToken;
-                pendingLoadStartedAt = performance.now();
                 player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
                 videoLoadStartedHere = true;
             }
@@ -8525,8 +8408,6 @@
             // buffering già in corso invece di aiutarlo.
             if (!videoLoadStartedHere && player?.loadVideoById) {
                 playLoadToken++;
-                pendingLoadTimerToken = playLoadToken;
-                pendingLoadStartedAt = performance.now();
                 player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
             }
             updateMediaSessionMetadata(track);
@@ -8648,66 +8529,6 @@
                     addRecentTrack({ id: t.id, title: t.title, channel: t.channel, thumbnail: t.thumbnail || null, spotifyImport: !!t.spotifyImport, listType: nowPlayingListType, listKey: nowPlayingListKey, listTitle: nowPlayingListTitle });
                 }
             }
-        }
-
-        // Scambia il player attivo con quello di preload, SOLO se quest'ultimo ha già pronto
-        // esattamente il video richiesto. Il player "vecchio" (col brano appena lasciato,
-        // già messo in pausa da loadTrack poco sopra) diventa il nuovo player di preload,
-        // pronto per essere riutilizzato al prossimo scambio. Se non c'è corrispondenza
-        // (salto non sequenziale, primo brano della sessione, preload non ancora pronto...)
-        // non fa nulla: loadTrack prosegue come sempre, a freddo, sul player principale.
-        function trySwapInPreloadedPlayer(targetVideoId) {
-            if (!preloadPlayerReady || !preloadPlayer || preloadedVideoId !== targetVideoId) {
-                // DEBUG TEMPORANEO: dice esattamente perché lo scambio non è avvenuto,
-                // così sappiamo se il problema è "non è mai pronto in tempo" o altro.
-                debugLog('[preload] SWAP SALTATO -', 'ready:', preloadPlayerReady, 'preloadPlayer:', !!preloadPlayer, 'atteso:', preloadedVideoId, 'richiesto:', targetVideoId);
-                return false;
-            }
-            const old = player;
-            player = preloadPlayer;
-            preloadPlayer = old;
-            preloadedVideoId = null; // lo slot di preload ora contiene il brano vecchio, va rifatto
-            debugLog('[preload] SWAP ESEGUITO per', targetVideoId);
-            try {
-                // Il player appena promosso ad "attivo" era muto (era lì solo per bufferizzare
-                // in silenzio): va riallineato al volume scelto dall'utente prima che riparta.
-                player.unMute();
-                player.setVolume(document.getElementById('volumeSlider')?.value || 100);
-            } catch (e) {}
-            return true;
-        }
-
-        // Rispecchia la stessa identica logica di nextTrack() qui sotto per capire quale
-        // sarà il PROSSIMO brano, senza però effettivamente cambiarlo: serve solo a sapere
-        // cosa scaldare in anticipo nel player nascosto. Se il prossimo passo richiederebbe
-        // una fetch di rete (paginazione risultati di ricerca) non c'è nulla da precaricare:
-        // l'id di quel brano non esiste ancora.
-        function computeNextTrackForPreload() {
-            if (nowPlayingTracks.length === 0) return null;
-            const nextIdx = nowPlayingIndex + 1;
-            if (nextIdx >= nowPlayingTracks.length) {
-                if (nowPlayingTracks === appState.tracks && nextSearchPageToken) return null;
-                return nowPlayingTracks[0] || null;
-            }
-            return nowPlayingTracks[nextIdx] || null;
-        }
-
-        // Chiamata con un piccolo ritardo dopo che un brano è davvero partito (vedi
-        // onPlayerStateChange, stato PLAYING): scalda in background, nel player nascosto, il
-        // brano che verrà dopo. Il ritardo evita che il preload competa per banda proprio nei
-        // primi istanti del brano appena avviato (stesso ragionamento di scheduleQualityUpgrade
-        // qui sopra).
-        function scheduleNextTrackPreload() {
-            if (!preloadPlayer || !preloadPlayerReady) return;
-            const candidate = computeNextTrackForPreload();
-            if (!candidate || !candidate.id) { debugLog('[preload] niente da precaricare'); return; }
-            if (candidate.id === preloadedVideoId) return; // già pronto
-            preloadedVideoId = candidate.id;
-            debugLog('[preload] avvio cueVideoById per il prossimo brano:', candidate.title, candidate.id);
-            try {
-                preloadPlayer.mute();
-                preloadPlayer.cueVideoById({ videoId: candidate.id, suggestedQuality: 'tiny' });
-            } catch (e) { preloadedVideoId = null; debugLog('[preload] errore avvio cue', e); }
         }
 
         function nextTrack() {

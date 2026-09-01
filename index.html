@@ -2687,13 +2687,12 @@
         }
 
         // --- UPGRADE AUTOMATICO DELLA QUALITÀ DOPO L'AVVIO ---
-        // TEST TEMPORANEO: loadVideoById ora parte direttamente con
-        // suggestedQuality:'hd1080' invece di 'small', per misurare se l'avvio ad
-        // alta risoluzione causa stalli percepibili o è gestibile senza problemi.
-        // Se il test va male, basta rimettere 'small' nei 3 punti sopra elencati
-        // (cueVideoById x2, loadVideoById x1) per tornare al comportamento originale.
-        // La logica di upgrade automatico qui sotto resta invariata e ora è
-        // sostanzialmente un no-op (il livello è già alto dall'inizio).
+        // Tutti i punti di cue/load del player (loadTrack, restoreLastPlayback,
+        // pendingCueTrackId) partono con suggestedQuality:'tiny': il player è un
+        // riquadro 1x1 invisibile, quindi la risoluzione video non ha alcun impatto
+        // visivo, ma bufferizzare meno dati fa partire l'audio prima. La logica sotto
+        // alza la qualità al massimo disponibile poco dopo l'avvio, quindi il
+        // risparmio riguarda solo l'attesa iniziale, non la qualità finale d'ascolto.
         let qualityUpgradeTimer = null;
         let qualityUpgradedVideoId = null;
 
@@ -2760,9 +2759,9 @@
             if (pendingCueTrackId) {
                 try {
                     if (pendingAutoplay) {
-                        player.loadVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' });
+                        player.loadVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'tiny' });
                     } else {
-                        player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'hd1080' });
+                        player.cueVideoById({ videoId: pendingCueTrackId, suggestedQuality: 'tiny' });
                     }
                 } catch (err) {}
                 pendingCueTrackId = null;
@@ -5114,9 +5113,9 @@
                     try {
                         playLoadToken++;
                         if (pendingAutoplay) {
-                            player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
+                            player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
                         } else {
-                            player.cueVideoById({ videoId: track.id, suggestedQuality: 'hd1080' });
+                            player.cueVideoById({ videoId: track.id, suggestedQuality: 'tiny' });
                         }
                     } catch (err) {}
                 } else {
@@ -7666,23 +7665,55 @@
                 if (!data.items || data.items.length === 0) throw new Error('Nessun video YouTube trovato per questo brano.');
 
                 const item = data.items[0];
-                // Se il brano ha già una copertina Deezer/iTunes non serve nemmeno
-                // chiedere la cascata di qualità YouTube: risparmia le richieste inutili
-                // (vedi applyResolvedId, che comunque la ignorerebbe).
-                const thumbnailUrl = track.thumbnail ? null : await resolveBestArtworkUrl(item.id.videoId);
-                applyResolvedId(item.id.videoId, thumbnailUrl);
+                // L'id basta per far partire l'audio: applichiamo SUBITO, senza aspettare
+                // la copertina in alta risoluzione. Prima la cascata di qualità YouTube
+                // (resolveBestArtworkUrl, fino a 4 richieste in sequenza) veniva attesa
+                // qui prima di ritornare, e loadTrack aspetta questo ritorno prima di
+                // chiamare player.loadVideoById(): un ritardo puramente estetico che
+                // rallenta l'inizio dell'ascolto. Ora la copertina si risolve in
+                // background e aggiorna l'interfaccia quando è pronta, senza bloccare nulla.
+                applyResolvedId(item.id.videoId, null);
 
-                // Salva in cache: se questo brano ricompare (stessa o altra playlist),
-                // il prossimo avvio lo riprodurrà subito senza rifare la ricerca YouTube.
+                // Salva subito in cache anche solo con l'id: se l'utente cambia brano
+                // prima che la copertina finisca di risolversi, il prossimo ascolto
+                // trova comunque l'id in cache (la copertina verrà aggiunta quando pronta,
+                // vedi sotto).
                 setCachedTrack(track.title, track.channel, { id: track.id, thumbnail: track.thumbnail });
 
-                // Se il brano appartiene a una playlist Spotify attualmente caricata,
-                // aggiorna anche la sua copia nella cache-playlist: così l'id resta
-                // pronto pure alla prossima riapertura dalla cache, non solo in questa sessione.
-                // Rimandato al prossimo tick per non ritardare l'avvio della riproduzione.
                 if (currentListSource === 'spotify' && currentLoadedKey && currentLoadedKey.startsWith('playlist:')) {
                     const plUrl = currentLoadedKey.slice('playlist:'.length);
                     setTimeout(() => updateCachedPlaylistTrack(plUrl, track.title, track.channel, { id: track.id, thumbnail: track.thumbnail }), 0);
+                }
+
+                // Copertina in alta risoluzione: risolta in background, senza await.
+                // Se il brano ha già una copertina Deezer/iTunes non serve nemmeno
+                // chiedere la cascata di qualità YouTube: risparmia le richieste inutili.
+                if (!track.thumbnail) {
+                    resolveBestArtworkUrl(item.id.videoId).then((thumbnailUrl) => {
+                        if (!thumbnailUrl || track.thumbnail) return;
+                        track.thumbnail = thumbnailUrl;
+
+                        // Aggiorna la riga della lista SOLO se appartiene ancora alla
+                        // vista corrente (stessa logica di updateRowUI in applyResolvedId).
+                        if (updateRowUI) {
+                            const img = document.getElementById(`track-img-${index}`);
+                            if (img) img.src = thumbnailUrl;
+                        }
+                        // Aggiorna il player/mini-player SOLO se questo è ancora il brano
+                        // in ascolto adesso (l'utente potrebbe essere già passato oltre).
+                        if (nowPlayingTracks && nowPlayingTracks[nowPlayingIndex] === track) {
+                            const sheetImg = document.getElementById('sheetArtworkImg');
+                            const miniImg = document.getElementById('miniPlayerImg');
+                            if (sheetImg) sheetImg.src = thumbnailUrl;
+                            if (miniImg) miniImg.src = thumbnailUrl;
+                        }
+
+                        setCachedTrack(track.title, track.channel, { id: track.id, thumbnail: track.thumbnail });
+                        if (currentListSource === 'spotify' && currentLoadedKey && currentLoadedKey.startsWith('playlist:')) {
+                            const plUrl = currentLoadedKey.slice('playlist:'.length);
+                            updateCachedPlaylistTrack(plUrl, track.title, track.channel, { id: track.id, thumbnail: track.thumbnail });
+                        }
+                    }).catch(() => {});
                 }
 
                 return true;
@@ -8345,7 +8376,7 @@
             // subito una qualità bassa, YouTube deve bufferizzare molti meno dati prima di
             // poter iniziare la riproduzione: è il punto che pesa di più sull'attesa "parte
             // la canzone", più della semplice velocità di rete.
-            if (player?.loadVideoById) { playLoadToken++; player.loadVideoById({ videoId: track.id, suggestedQuality: 'hd1080' }); }
+            if (player?.loadVideoById) { playLoadToken++; player.loadVideoById({ videoId: track.id, suggestedQuality: 'tiny' }); }
             updateMediaSessionMetadata(track);
 
             // Ricordiamo il brano e la playlist/ricerca in ascolto: alla prossima apertura

@@ -2725,6 +2725,14 @@
                         preloadPlayerReady = true;
                         try { preloadPlayer.mute(); preloadPlayer.setVolume(0); } catch (e) {}
                     },
+                    // Condiviso col player principale (vedi il controllo "event.target !== player"
+                    // in cima a onPlayerStateChange): finché questa istanza fa solo da preload,
+                    // quel controllo scarta i suoi eventi. Dal momento in cui viene promossa a
+                    // player attivo (trySwapInPreloadedPlayer), gli stessi eventi iniziano a
+                    // contare - senza questo, dopo lo scambio il minutaggio in-app resterebbe
+                    // fermo a 0:00 nonostante l'audio suoni davvero (bug osservato: notifica di
+                    // sistema con il tempo giusto, app ferma a 0:00).
+                    'onStateChange': onPlayerStateChange,
                     // Se il preload del "prossimo brano" fallisce (video rimosso, rete lenta...),
                     // non facciamo nulla qui: al momento vero del passaggio, trySwapInPreloadedPlayer
                     // non troverà l'id atteso e si tornerà semplicemente al percorso normale
@@ -2863,6 +2871,15 @@
         }
 
         function onPlayerStateChange(event) {
+            // Questo handler è condiviso da entrambi i player (principale e di preload): un
+            // evento del player NON attivo in questo momento (preload silenzioso in corso, o
+            // istanza appena "retrocessa" a preload dopo uno scambio) non riguarda quello che
+            // l'utente sta davvero ascoltando, quindi va ignorato qui. Se non ci fosse questo
+            // controllo, un evento del player nascosto potrebbe far scattare per errore
+            // aggiornamenti (icona play, media session, minutaggio) su un brano che non è
+            // quello in riproduzione.
+            if (event.target !== player) return;
+
             // Prima conferma affidabile che il video "attivo" per l'IFrame è davvero
             // quello dell'ultimo loadVideoById/cueVideoById: da qui in poi getCurrentTime()
             // e getDuration() riflettono il video nuovo, non più quello uscente (vedi

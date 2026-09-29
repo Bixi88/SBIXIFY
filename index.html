@@ -6119,19 +6119,39 @@
             closeNowPlayingSheet();
         }
 
+        // Da Android 13 il sistema mostra da solo il popup "Copiato" a ogni scrittura
+        // negli appunti (non disattivabile da una web app): lì evitiamo il nostro
+        // "Link copiato!" per non avere due popup sovrapposti.
+        let _sysCopyToastCache = null;
+        async function systemShowsCopyToast() {
+            if (_sysCopyToastCache !== null) return _sysCopyToastCache;
+            let result = false;
+            try {
+                const uad = navigator.userAgentData;
+                if (uad && uad.getHighEntropyValues && /android/i.test(uad.platform || '')) {
+                    const v = await uad.getHighEntropyValues(['platformVersion']);
+                    result = parseInt(v.platformVersion, 10) >= 13;
+                } else {
+                    const m = navigator.userAgent.match(/Android (\d+)/);
+                    result = m ? parseInt(m[1], 10) >= 13 : false;
+                }
+            } catch (e) { result = false; }
+            _sysCopyToastCache = result;
+            return result;
+        }
+
         async function redirectToDownload() {
             if (nowPlayingIndex === -1) return;
             const currentTrack = nowPlayingTracks[nowPlayingIndex];
             if (!currentTrack || !currentTrack.id) return;
             
             const youtubeUrl = `https://www.youtube.com/watch?v=${currentTrack.id}`;
+            let copied = false;
             
-            // Solo copia del link + popup "Link copiato!": nessuna pagina esterna.
             try {
                 await navigator.clipboard.writeText(youtubeUrl);
-                showToast("Link copiato!");
+                copied = true;
             } catch (err) {
-                // Fallback per contesti dove la Clipboard API non è disponibile/permessa
                 try {
                     const ta = document.createElement('textarea');
                     ta.value = youtubeUrl;
@@ -6140,12 +6160,15 @@
                     ta.style.opacity = '0';
                     document.body.appendChild(ta);
                     ta.select();
-                    const ok = document.execCommand('copy');
+                    copied = document.execCommand('copy');
                     ta.remove();
-                    showToast(ok ? "Link copiato!" : "Impossibile copiare il link");
-                } catch (e2) {
-                    showToast("Impossibile copiare il link");
-                }
+                } catch (e2) { copied = false; }
+            }
+            
+            if (!copied) {
+                showToast("Impossibile copiare il link");
+            } else if (!(await systemShowsCopyToast())) {
+                showToast("Link copiato!");
             }
         }
 

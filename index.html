@@ -6126,14 +6126,26 @@
             
             const youtubeUrl = `https://www.youtube.com/watch?v=${currentTrack.id}`;
             
+            // Solo copia del link + popup "Link copiato!": nessuna pagina esterna.
             try {
                 await navigator.clipboard.writeText(youtubeUrl);
                 showToast("Link copiato!");
-                setTimeout(() => {
-                    window.open(`https://kleger.pl/`, '_blank');
-                }, 800);
             } catch (err) {
-                window.open(`https://kleger.pl/`, '_blank');
+                // Fallback per contesti dove la Clipboard API non è disponibile/permessa
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = youtubeUrl;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    const ok = document.execCommand('copy');
+                    ta.remove();
+                    showToast(ok ? "Link copiato!" : "Impossibile copiare il link");
+                } catch (e2) {
+                    showToast("Impossibile copiare il link");
+                }
             }
         }
 

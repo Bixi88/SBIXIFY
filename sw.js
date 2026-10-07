@@ -4,7 +4,7 @@
 // Questa versione va aggiornata SOLO se un giorno modifichi la logica
 // di questo file (nuove strategie di cache, nuovi asset precaricati, ecc.) —
 // non per i normali aggiornamenti di index.html.
-const CACHE_NAME = 'sbixify-cache-v4';
+const CACHE_NAME = 'sbixify-cache-v3';
 
 // Cache separata per le immagini (thumbnail YouTube, artwork iTunes): a
 // differenza della cache dell'app shell, questa non va mai svuotata negli
@@ -134,10 +134,6 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-
-  // Audio/video in streaming (richieste con header Range, come lo stream dal Worker):
-  // non intercettarli, il browser le gestisce meglio da solo (seek, buffering).
-  if (req.destination === 'audio' || req.destination === 'video' || req.headers.has('range')) return;
 
   // Mai intercettare le chiamate verso YouTube/Google API: sempre rete diretta,
   // niente cache, per evitare risultati di ricerca "vecchi".

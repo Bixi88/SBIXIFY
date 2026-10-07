@@ -125,7 +125,6 @@
          così, quando parte davvero il primo player.loadVideoById(), non si paga più
          quel tempo di handshake sul percorso critico dell'avvio audio. -->
     <link rel="preconnect" href="https://www.youtube.com">
-    <link rel="preconnect" href="https://sbixify-stream-worker.bix20252025.workers.dev" crossorigin>
     <link rel="preconnect" href="https://i.ytimg.com">
     <link rel="preconnect" href="https://www.google.com">
 
@@ -2682,209 +2681,18 @@
             if (document.getElementById('pwaInstallBtn')) document.getElementById('pwaInstallBtn').classList.remove('hidden');
         });
 
-        // ===================================================================
-        // PLAYER IBRIDO: <audio> alimentato dal Worker (metodo Echo Music)
-        //                con ripiego automatico sull'IFrame YouTube
-        // ===================================================================
-        // Il resto dell'app parla con `player` come se fosse un YT.Player (loadVideoById,
-        // seekTo, getCurrentTime...). HybridPlayer espone la stessa API ma, di default,
-        // riproduce con un normale <audio> il cui stream audio viene risolto dal Worker
-        // (sbixify-stream-worker): niente IFrame, quindi niente attesa di ~10 s imposta
-        // da YouTube a chi usa un adblocker. Se per un brano il Worker fallisce (errore,
-        // nessun avvio entro il timeout) si passa SOLO per quel brano all'IFrame YouTube,
-        // caricato al volo; il brano dopo riprova prima col Worker.
-        const STREAM_WORKER_URL = 'https://sbixify-stream-worker.bix20252025.workers.dev';
-        const STREAM_START_TIMEOUT_MS = 9000;
-        const PS = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
 
-        class HybridPlayer {
-            constructor() {
-                const a = this.a = new Audio();
-                a.setAttribute('playsinline', '');
-                this.mode = 'audio';            // 'audio' (Worker) | 'yt' (ripiego IFrame)
-                this.vid = '';
-                this.state = PS.UNSTARTED;
-                this.yt = null; this.ytReady = false; this._ytLoading = false; this._ytPending = null;
-                this._wantPlay = false; this._started = false; this._retries = 0;
-                this._resumeAt = null; this._watchdog = null;
-                this._vol = 1; this._muted = false;
-
-                a.addEventListener('playing', () => {
-                    if (this.mode !== 'audio') return;
-                    this._started = true;
-                    clearTimeout(this._watchdog);
-                    this._emit(PS.PLAYING);
-                });
-                a.addEventListener('pause', () => {
-                    if (this.mode !== 'audio' || a.ended || !a.getAttribute('src')) return;
-                    this._emit(PS.PAUSED);
-                });
-                a.addEventListener('waiting', () => {
-                    if (this.mode === 'audio' && this._wantPlay) this._emit(PS.BUFFERING);
-                });
-                a.addEventListener('ended', () => {
-                    if (this.mode === 'audio') this._emit(PS.ENDED);
-                });
-                a.addEventListener('loadedmetadata', () => {
-                    if (this.mode !== 'audio') return;
-                    if (this._resumeAt != null) {            // ripresa dopo un errore a metà brano
-                        try { a.currentTime = this._resumeAt; } catch (e) {}
-                        this._resumeAt = null;
-                        if (this._wantPlay) a.play().catch(() => {});
-                    } else if (!this._wantPlay) {
-                        this._emit(PS.CUED);
-                    }
-                });
-                a.addEventListener('error', () => {
-                    if (this.mode === 'audio' && a.getAttribute('src')) this._onAudioError();
-                });
-            }
-
-            _emit(s) { this.state = s; onPlayerStateChange({ data: s, target: this }); }
-
-            _url(id) {
-                // webm/opus dove supportato (come Echo), altrimenti m4a (es. Safari più vecchi)
-                const fmt = this.a.canPlayType('audio/webm; codecs="opus"') ? '' : '&fmt=m4a';
-                return `${STREAM_WORKER_URL}/audio?id=${encodeURIComponent(id)}${fmt}`;
-            }
-
-            _clearSrc() {
-                this.a.pause();
-                this.a.removeAttribute('src');
-                this.a.load();
-            }
-
-            _start(id, autoplay) {
-                clearTimeout(this._watchdog);
-                if (this.mode === 'yt' && this.yt && this.ytReady) { try { this.yt.stopVideo(); } catch (e) {} }
-                this.mode = 'audio';
-                this.vid = id;
-                this._wantPlay = autoplay;
-                this._started = false;
-                this._retries = 0;
-                this._resumeAt = null;
-                const a = this.a;
-                a.preload = autoplay ? 'auto' : 'metadata';
-                a.src = this._url(id);
-                a.volume = this._vol;
-                a.muted = this._muted;
-                Promise.resolve().then(() => { if (this.vid === id && this.mode === 'audio') this._emit(PS.UNSTARTED); });
-                if (autoplay) {
-                    const p = a.play();
-                    if (p && p.catch) p.catch((err) => {
-                        // AbortError = src cambiato nel frattempo (normale). NotAllowedError = autoplay bloccato.
-                        if (err && err.name === 'NotAllowedError' && this.vid === id) this._emit(PS.PAUSED);
-                    });
-                    this._watchdog = setTimeout(() => {
-                        if (this.vid === id && this.mode === 'audio' && !this._started) this._fallbackToYt('timeout');
-                    }, STREAM_START_TIMEOUT_MS);
-                }
-            }
-
-            _onAudioError() {
-                if (this._started && this._retries < 2) {
-                    // Errore a metà brano (URL scaduto, rete): il Worker rigenera l'URL, riprendiamo da dove eravamo.
-                    this._retries++;
-                    this._resumeAt = this.a.currentTime || 0;
-                    this.a.src = this._url(this.vid) + '&r=' + Date.now();
-                    return;
-                }
-                this._fallbackToYt('errore audio');
-            }
-
-            _fallbackToYt(why) {
-                if (this.mode === 'yt') return;
-                clearTimeout(this._watchdog);
-                const id = this.vid, want = this._wantPlay;
-                console.warn('[Sbixify] Stream dal Worker non disponibile (' + why + '), uso l\'IFrame YouTube per', id);
-                this._clearSrc();
-                this.mode = 'yt';
-                this._withYt((yt) => {
-                    if (this.mode !== 'yt' || this.vid !== id) return;
-                    try { yt.setVolume(Math.round(this._vol * 100)); this._muted ? yt.mute() : yt.unMute(); } catch (e) {}
-                    if (want) yt.loadVideoById({ videoId: id, suggestedQuality: 'tiny' });
-                    else yt.cueVideoById({ videoId: id, suggestedQuality: 'tiny' });
-                });
-            }
-
-            _withYt(fn) {
-                if (this.ytReady) { fn(this.yt); return; }
-                this._ytPending = fn;
-                if (this._ytLoading) return;
-                this._ytLoading = true;
-                const create = () => {
-                    this.yt = new YT.Player('ytPlayerContainer', {
-                        height: '100%', width: '100%', videoId: '',
-                        playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1, 'fs': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
-                        events: {
-                            'onReady': () => {
-                                this.ytReady = true;
-                                const f = this._ytPending; this._ytPending = null;
-                                if (f) f(this.yt);
-                            },
-                            'onStateChange': (e) => { if (this.mode === 'yt') { this.state = e.data; onPlayerStateChange(e); } },
-                            'onError': (e) => { if (this.mode === 'yt') onPlayerError(e); }
-                        }
-                    });
-                };
-                if (window.YT && window.YT.Player) { create(); return; }
-                window.onYouTubeIframeAPIReady = create;
-                const tag = document.createElement('script');
-                tag.src = 'https://www.youtube.com/iframe_api';
-                tag.onerror = () => { this._ytLoading = false; if (this.mode === 'yt') onPlayerError({ data: 5 }); };
-                document.head.appendChild(tag);
-            }
-
-            _y(fn, dflt, ...args) {
-                try { return this.yt && this.yt[fn] ? this.yt[fn](...args) : dflt; } catch (e) { return dflt; }
-            }
-
-            // ---- API compatibile con YT.Player (solo la parte usata da Sbixify) ----
-            loadVideoById(o) { this._start(typeof o === 'string' ? o : o.videoId, true); }
-            cueVideoById(o)  { this._start(typeof o === 'string' ? o : o.videoId, false); }
-            playVideo() {
-                if (this.mode === 'yt') { this._y('playVideo'); return; }
-                this._wantPlay = true;
-                if (this.a.getAttribute('src')) { const p = this.a.play(); if (p && p.catch) p.catch(() => {}); }
-                else if (this.vid) this._start(this.vid, true);
-            }
-            pauseVideo() {
-                if (this.mode === 'yt') { this._y('pauseVideo'); return; }
-                this._wantPlay = false;
-                this.a.pause();
-            }
-            stopVideo() {
-                if (this.mode === 'yt') { this._y('stopVideo'); return; }
-                this._wantPlay = false;
-                clearTimeout(this._watchdog);
-                this._clearSrc();
-            }
-            seekTo(sec) {
-                if (this.mode === 'yt') { this._y('seekTo', undefined, sec, true); return; }
-                if (!this.a.getAttribute('src')) return;
-                try { this.a.currentTime = Math.max(0, sec); } catch (e) {}
-            }
-            getCurrentTime() { return this.mode === 'yt' ? (this._y('getCurrentTime', 0) || 0) : (this.a.currentTime || 0); }
-            getDuration() {
-                if (this.mode === 'yt') return this._y('getDuration', 0) || 0;
-                return Number.isFinite(this.a.duration) ? this.a.duration : 0;
-            }
-            getVideoData() { return this.mode === 'yt' ? (this._y('getVideoData', { video_id: this.vid }) || { video_id: this.vid }) : { video_id: this.vid }; }
-            getPlayerState() { return this.state; }
-            setVolume(v) { this._vol = Math.min(1, Math.max(0, (Number(v) || 0) / 100)); this.a.volume = this._vol; this._y('setVolume', undefined, Number(v) || 0); }
-            getVolume() { return Math.round(this._vol * 100); }
-            mute() { this._muted = true; this.a.muted = true; this._y('mute'); }
-            unMute() { this._muted = false; this.a.muted = false; this._y('unMute'); }
-            isMuted() { return this._muted; }
-            getAvailableQualityLevels() { return this.mode === 'yt' ? (this._y('getAvailableQualityLevels', []) || []) : []; }
-            getPlaybackQuality() { return this.mode === 'yt' ? this._y('getPlaybackQuality', null) : null; }
-            setPlaybackQuality(q) { if (this.mode === 'yt') this._y('setPlaybackQuality', undefined, q); }
+        let player;
+        window.onYouTubeIframeAPIReady = function() {
+            player = new YT.Player('ytPlayerContainer', {
+                height: '100%', width: '100%', videoId: '',
+                playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1, 'fs': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
+                events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange, 'onError': onPlayerError }
+            });
         }
-
-        let player = new HybridPlayer();
-        // onPlayerReady usa variabili dichiarate più avanti nello script: lo rimandiamo a
-        // fine esecuzione (come faceva l'IFrame API, che era comunque asincrona).
-        setTimeout(() => onPlayerReady({ target: player }), 0);
 
         // --- UPGRADE AUTOMATICO DELLA QUALITÀ DOPO L'AVVIO ---
         // Tutti i punti di cue/load del player (loadTrack, restoreLastPlayback,
@@ -3029,7 +2837,7 @@
             // caricamento di un nuovo video) NON toccano l'icona: così, come su Spotify, il pulsante resta
             // sul simbolo "pausa" mentre ci si muove dentro la canzone, e torna alla freccia "play" solo
             // quando l'utente mette effettivamente in pausa.
-            if (event.data == PS.PLAYING) {
+            if (event.data == YT.PlayerState.PLAYING) {
                 playerErrorStreak = 0; // un brano è ripartito con successo: azzera il contatore errori
                 appState.isPlaying = true;
                 setPlayIconState(true);
@@ -3051,13 +2859,13 @@
                 // per sé, buon momento per far partire in sordina l'aggiornamento delle
                 // playlist scadute senza competere con la risoluzione del brano appena avviato.
                 schedulePlaylistAutoRefresh();
-            } else if (event.data == PS.PAUSED) {
+            } else if (event.data == YT.PlayerState.PAUSED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
                 updateMediaSessionState(false);
                 updateMediaSessionPosition();
                 syncKeepAlive(false);
-            } else if (event.data == PS.ENDED) {
+            } else if (event.data == YT.PlayerState.ENDED) {
                 appState.isPlaying = false;
                 setPlayIconState(false);
                 updateMediaSessionState(false);
